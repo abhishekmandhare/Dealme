@@ -60,41 +60,38 @@ What Docker containers make up DealMe and how do they communicate?
 
 ```mermaid
 graph TB
-    User["👤 DealMe User"]
+    User["DealMe User"]
 
-    subgraph Platform["DealMe Platform<br/>(Docker Compose)"]
-        Dashboard["Web Dashboard<br/>React + TypeScript<br/><br/>Deal feed, price watches,<br/>earnings, settings"]
-        API["Core API<br/>ASP.NET Core 9<br/><br/>Business logic, matching,<br/>scoring, dedup, Hangfire,<br/>Playwright runtime"]
-        DB["Database<br/>SQLite MVP / PostgreSQL<br/><br/>Opportunities, Preferences,<br/>Earnings, PriceHistory,<br/>AuditLog"]
-        CDIO["changedetection.io<br/>Docker :5000<br/><br/>Price & page monitoring"]
-        Apprise["Apprise<br/>Docker :8000<br/><br/>Notification gateway<br/>90+ channels"]
-        Wallos["Wallos<br/>Docker :8282<br/><br/>Subscription tracking"]
-        N8N["n8n (optional)<br/>Docker :5678<br/><br/>Workflow automation"]
-    end
+    Dashboard["Web Dashboard<br/>React TypeScript<br/><br/>Deal feed, price watches,<br/>earnings, settings"]
+    API["Core API<br/>ASP.NET Core 9<br/><br/>Business logic, matching,<br/>scoring, dedup, Hangfire"]
+    DB["Database<br/>SQLite MVP / PostgreSQL"]
+    CDIO["changedetection.io<br/>Port 5000<br/><br/>Price monitoring"]
+    Apprise["Apprise<br/>Port 8000<br/><br/>Notifications 90+ channels"]
+    Wallos["Wallos<br/>Port 8282<br/><br/>Subscription tracking"]
+    N8N["n8n Optional<br/>Port 5678<br/><br/>Workflow automation"]
 
-    RSS["RSS Deal Sources<br/>OzBargain, Cheapies,<br/>Frugal Feeds"]
-    Scrape["Scrape Targets<br/>Cashrewards, ShopBack,<br/>Point Hacks, Finder"]
-    APIs["API Sources<br/>Up Bank, Honeygain,<br/>EarnApp"]
-    Monitored["Monitored Sites<br/>Bank pages, govt portals,<br/>law firms, retailers"]
+    RSS["RSS Deal Sources<br/>OzBargain Cheapies"]
+    Scrape["Scrape Targets<br/>Cashrewards ShopBack"]
+    APIs["API Sources<br/>Up Bank Honeygain"]
+    Monitored["Monitored Sites<br/>Bank pages Govt portals"]
     RewardSites["Rewards Sites<br/>Microsoft Rewards"]
-    Devices["User Devices<br/>Discord, Telegram,<br/>Email, SMS"]
+    Devices["User Devices<br/>Discord Telegram Email"]
 
     User -->|HTTPS| Dashboard
-    User -.->|Receives alerts| Devices
-    Dashboard -->|REST / JSON| API
+    User -.->|Alerts| Devices
+    Dashboard -->|REST JSON| API
     API -->|EF Core| DB
-    API -->|HTTP :8000| Apprise
-    API -->|HTTP :5000| CDIO
+    API -->|HTTP 8000| Apprise
+    API -->|HTTP 5000| CDIO
     CDIO -->|Webhooks| API
-    API -->|HTTP :8282| Wallos
-    API -->|HTTP :5678| N8N
-
-    API -->|Poll RSS every 5 min| RSS
-    API -->|Scrape every 4-6 hrs| Scrape
-    API -->|REST API| APIs
+    API -->|HTTP 8282| Wallos
+    API -->|HTTP 5678| N8N
+    API -->|Poll RSS| RSS
+    API -->|Scrape| Scrape
+    API -->|REST| APIs
     API -->|Playwright| RewardSites
-    CDIO -->|Monitor pages| Monitored
-    Apprise -->|Deliver alerts| Devices
+    CDIO -->|Monitor| Monitored
+    Apprise -->|Deliver| Devices
 
     style User fill:#08427B,stroke:#073B6F,color:#fff
     style Dashboard fill:#438DD5,stroke:#3C7FC0,color:#fff
@@ -112,7 +109,18 @@ graph TB
     style Devices fill:#999,stroke:#888,color:#fff
 ```
 
-**Legend:** Blue = DealMe container | Grey = External system
+<details>
+<summary><b>Container Descriptions</b></summary>
+
+- **Web Dashboard** (React + TypeScript): User-facing interface for viewing deals, price watches, earnings, and managing settings
+- **Core API** (ASP.NET Core 9): Backend business logic, Matching Engine, Scoring Engine, Dedup, Hangfire scheduler, Playwright runtime
+- **Database** (SQLite MVP / PostgreSQL): Opportunities, UserPreferences, Earnings, PriceHistory, AuditLog, BonusTracking
+- **changedetection.io** (Docker :5000): Price and page change monitoring
+- **Apprise** (Docker :8000): Notification gateway to 90+ channels
+- **Wallos** (Docker :8282): Subscription tracking
+- **n8n** (Docker :5678, optional): Complex workflow automation
+
+</details>
 
 ---
 
