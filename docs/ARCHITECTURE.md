@@ -62,39 +62,39 @@ What Docker containers make up DealMe and how do they communicate?
 graph TB
     User["👤 DealMe User"]
 
-    subgraph DealMe["DealMe Platform (Docker Compose)"]
-        Dashboard["🟦 Web Dashboard<br/><i>React + TypeScript</i><br/><br/>Deal feed, price watches,<br/>earnings, settings"]
-        API["🟦 Core API<br/><i>ASP.NET Core 9</i><br/><br/>Business logic, matching,<br/>scoring, dedup, Hangfire,<br/>Playwright runtime"]
-        DB[("🟦 Database<br/><i>SQLite (MVP) / PostgreSQL</i><br/><br/>Opportunities, Preferences,<br/>Earnings, PriceHistory,<br/>AuditLog")]
-        CDIO["🟦 changedetection.io<br/><i>Docker :5000</i><br/><br/>Price & page monitoring"]
-        Apprise["🟦 Apprise<br/><i>Docker :8000</i><br/><br/>Notification gateway<br/>90+ channels"]
-        Wallos["🟦 Wallos<br/><i>Docker :8282</i><br/><br/>Subscription tracking"]
-        N8N["🟦 n8n (optional)<br/><i>Docker :5678</i><br/><br/>Workflow automation"]
+    subgraph Platform["DealMe Platform<br/>(Docker Compose)"]
+        Dashboard["Web Dashboard<br/>React + TypeScript<br/><br/>Deal feed, price watches,<br/>earnings, settings"]
+        API["Core API<br/>ASP.NET Core 9<br/><br/>Business logic, matching,<br/>scoring, dedup, Hangfire,<br/>Playwright runtime"]
+        DB["Database<br/>SQLite MVP / PostgreSQL<br/><br/>Opportunities, Preferences,<br/>Earnings, PriceHistory,<br/>AuditLog"]
+        CDIO["changedetection.io<br/>Docker :5000<br/><br/>Price & page monitoring"]
+        Apprise["Apprise<br/>Docker :8000<br/><br/>Notification gateway<br/>90+ channels"]
+        Wallos["Wallos<br/>Docker :8282<br/><br/>Subscription tracking"]
+        N8N["n8n (optional)<br/>Docker :5678<br/><br/>Workflow automation"]
     end
 
-    RSS["⬜ RSS Deal Sources<br/><i>OzBargain, Cheapies,<br/>Frugal Feeds</i>"]
-    Scrape["⬜ Scrape Targets<br/><i>Cashrewards, ShopBack,<br/>Point Hacks, Finder</i>"]
-    APIs["⬜ API Sources<br/><i>Up Bank, Honeygain,<br/>EarnApp</i>"]
-    Monitored["⬜ Monitored Sites<br/><i>Bank pages, govt portals,<br/>law firms, retailers</i>"]
-    RewardSites["⬜ Rewards Sites<br/><i>Microsoft Rewards</i>"]
-    Devices["⬜ User Devices<br/><i>Discord, Telegram,<br/>Email, SMS</i>"]
+    RSS["RSS Deal Sources<br/>OzBargain, Cheapies,<br/>Frugal Feeds"]
+    Scrape["Scrape Targets<br/>Cashrewards, ShopBack,<br/>Point Hacks, Finder"]
+    APIs["API Sources<br/>Up Bank, Honeygain,<br/>EarnApp"]
+    Monitored["Monitored Sites<br/>Bank pages, govt portals,<br/>law firms, retailers"]
+    RewardSites["Rewards Sites<br/>Microsoft Rewards"]
+    Devices["User Devices<br/>Discord, Telegram,<br/>Email, SMS"]
 
-    User -->|"HTTPS"| Dashboard
-    User -.->|"Receives alerts"| Devices
-    Dashboard -->|"REST / JSON"| API
-    API -->|"EF Core"| DB
-    API -->|"HTTP :8000"| Apprise
-    API -->|"HTTP :5000"| CDIO
-    CDIO -->|"Webhooks"| API
-    API -->|"HTTP :8282"| Wallos
-    API -->|"HTTP :5678"| N8N
+    User -->|HTTPS| Dashboard
+    User -.->|Receives alerts| Devices
+    Dashboard -->|REST / JSON| API
+    API -->|EF Core| DB
+    API -->|HTTP :8000| Apprise
+    API -->|HTTP :5000| CDIO
+    CDIO -->|Webhooks| API
+    API -->|HTTP :8282| Wallos
+    API -->|HTTP :5678| N8N
 
-    API -->|"Poll RSS<br/>every 5 min"| RSS
-    API -->|"Scrape<br/>every 4-6 hrs"| Scrape
-    API -->|"REST API"| APIs
-    API -->|"Playwright"| RewardSites
-    CDIO -->|"Monitor pages"| Monitored
-    Apprise -->|"Deliver alerts"| Devices
+    API -->|Poll RSS every 5 min| RSS
+    API -->|Scrape every 4-6 hrs| Scrape
+    API -->|REST API| APIs
+    API -->|Playwright| RewardSites
+    CDIO -->|Monitor pages| Monitored
+    Apprise -->|Deliver alerts| Devices
 
     style User fill:#08427B,stroke:#073B6F,color:#fff
     style Dashboard fill:#438DD5,stroke:#3C7FC0,color:#fff
@@ -112,7 +112,7 @@ graph TB
     style Devices fill:#999,stroke:#888,color:#fff
 ```
 
-**Legend:** 🟦 Blue = DealMe container | ⬜ Grey = External system
+**Legend:** Blue = DealMe container | Grey = External system
 
 ---
 
