@@ -3,7 +3,7 @@
 > **Tagline:** Your autonomous Australian money-making and savings engine.
 >
 > **Version:** 0.1.0 (Draft)
-> **Last Updated:** 2026-04-03
+> **Last Updated:** 2026-04-04
 > **Status:** Pre-Development
 
 ---
@@ -20,8 +20,9 @@
 8. [Open Source Dependencies](#8-open-source-dependencies)
 9. [MVP Definition](#9-mvp-definition)
 10. [Roadmap](#10-roadmap)
-11. [Risk & Compliance](#11-risk--compliance)
-12. [Appendix: Rejected Approaches](#appendix-a-rejected-approaches)
+11. [Bank Connection & Data Access](#11-bank-connection--data-access)
+12. [Risk & Compliance](#12-risk--compliance)
+13. [Appendix: Rejected Approaches](#appendix-a-rejected-approaches)
 
 ---
 
@@ -98,22 +99,49 @@ Single Docker Compose deployment on day one. Architecture supports horizontal sc
 
 Use proven open-source tools wherever possible. Only build what doesn't exist: the aggregation logic, the scoring engine, and the unified dashboard.
 
+### P8: Minimise Toil
+
+Every feature is designed to reduce user effort. If the system can do it automatically, the user should never have to. Features are built in three tiers:
+
+| Tier | User Effort | Description | Example |
+|---|---|---|---|
+| **Tier 1: Fully Autonomous** | Zero clicks after setup | System runs entirely on its own | RSS deal scanning, price monitoring, class action alerts |
+| **Tier 2: One-Click Action** | System does 95%, user confirms | Pre-computed recommendation, user just approves | "Cashback available — click to activate" |
+| **Tier 3: Guided Setup** | One-time effort, then autonomous | User configures once, system takes over | Connect bank API, set interests, link reward accounts |
+
+**Design rules:**
+- Smart defaults over configuration — start with zero config, progressively profile
+- Auto-detect interests from user behaviour rather than asking
+- Never alert without a clear action — every notification answers "what should I do?"
+- Measure every feature by: **dollars earned or saved per minute of user effort**
+
 ---
 
 ## 4. Use Cases
 
 ### UC1: Deal Discovery & Alerts
 
-> *"I set my interests and get notified instantly when a matching deal appears."*
+> *"Deals that matter to me just show up — I never browse deal sites manually."*
 
-**Actor:** User
+**Automation Tier:** Tier 1 (Fully Autonomous) → learns into Tier 2 (One-Click Action)
+
+**Actor:** System (autonomous), User (acts on alerts)
 **Trigger:** New deal posted on monitored source
+
 **Flow:**
 1. System monitors OzBargain (RSS), Cheapies (RSS), Frugal Feeds (RSS) on a schedule
 2. New deal is parsed and normalised into standard format
-3. Matching engine compares deal against user's interest keywords and categories
-4. If match found with positive score, alert is sent via configured notification channel
-5. Deal is stored in database with metadata (source, price, votes, timestamp)
+3. Matching engine compares deal against user's interest profile
+4. Scoring engine ranks by value, cashback availability, and historical engagement
+5. High-confidence matches trigger immediate notification with actionable link
+6. Notification includes pre-computed cashback route (UC2) — user clicks one link to buy optimally
+7. Deal is stored in database; user's click/ignore behaviour refines future matching
+
+**Smart Defaults (zero config start):**
+- Initially sends top-voted deals across all categories (OzBargain 25+ votes)
+- Learns interests from which notifications the user clicks vs ignores
+- After ~2 weeks of passive learning, auto-narrows to relevant categories
+- User can accelerate by picking categories during optional onboarding
 
 **Sources:** OzBargain, Cheapies, Frugal Feeds, TopBargains
 **Integration Method:** RSS feeds (OzBargain has excellent per-category RSS)
@@ -121,88 +149,114 @@ Use proven open-source tools wherever possible. Only build what doesn't exist: t
 
 **Acceptance Criteria:**
 - Deals appear in system within 5 minutes of posting
-- User can set keyword filters, category filters, minimum vote threshold
+- Works immediately with zero configuration (smart defaults)
+- Interest profile auto-refines from notification engagement (click = interested, ignore = not)
 - Duplicate deals across sources are deduplicated
-- Notifications include: title, price, source link, cashback route if applicable
+- Notifications include: title, price, source link, **best cashback route pre-computed**
+- User never needs to visit OzBargain/Cheapies directly
 
 ---
 
 ### UC2: Cashback Optimiser
 
-> *"Before I buy something, the app tells me the best cashback route and whether there's a coupon to stack."*
+> *"Every deal alert already tells me the best cashback route — I just click one link."*
 
-**Actor:** User
-**Trigger:** User searches for a retailer/product, or a deal from UC1 triggers optimisation
+**Automation Tier:** Tier 1 (auto-computed) + Tier 2 (one-click activation)
+
+**Actor:** System (computes routes automatically), User (clicks optimised link)
+**Trigger:** Any opportunity from UC1/UC6/UC10 involving a purchase, OR user manually searches a retailer
+
 **Flow:**
-1. User enters retailer name or product
-2. System checks current cashback rates on Cashrewards and ShopBack
-3. System checks for active coupon codes (RetailMeNot AU, OzBargain coupons)
-4. System checks user's credit card portfolio for category bonuses
-5. System presents optimal stacking route with total savings percentage
+1. System continuously scrapes cashback rates from Cashrewards and ShopBack (background job)
+2. System maintains a coupon database from RetailMeNot AU and OzBargain coupon section
+3. When any deal/price alert fires, the cashback route is **pre-computed and embedded in the notification**
+4. If user has entered their credit cards during setup (Tier 3, optional), card bonus is factored in
+5. Notification includes a single optimised link — user clicks it and buys
+6. System tracks whether cashback was likely earned (via bank transaction matching if connected)
 
-**Example Output:**
+**Example Notification:**
 ```
-Buy via ShopBack (8% cashback) 
-+ Use code SAVE10 (10% off)
-+ Pay with AmEx Platinum Edge (3x points on online shopping)
-= Effective savings: ~18%
+🔔 JB Hi-Fi: Sony WH-1000XM5 — $299 (was $449)
+   Best route: ShopBack (8% = $23.92 back)
+   Coupon: JBSAVE5 ($5 off, verified 2d ago)
+   Card bonus: AmEx 3x points on online
+   → Effective price: $270.08  [Buy Now →]
 ```
 
 **Sources:** Cashrewards, ShopBack, RetailMeNot AU, OzBargain coupon section
 **Integration Method:** Web scraping (rates change frequently)
 
 **Acceptance Criteria:**
-- Cashback rates are refreshed at least every 6 hours
-- Coupon codes include community-reported validity status
-- Credit card optimisation requires user to input their cards once during setup
-- Shows comparison table: "Via Cashrewards: X% | Via ShopBack: Y% | Direct: 0%"
+- Cashback rates refreshed at least every 6 hours (background, no user action)
+- Cashback route **automatically bundled** into every deal/price notification — user never computes this manually
+- One-click buy link in every notification
+- Credit card optimisation optional (Tier 3 setup: enter cards once)
+- Coupon codes include community-reported validity status and age
+- Fallback: if no cashback route exists, notification says so explicitly
 
 ---
 
 ### UC3: Passive Earnings Dashboard
 
-> *"I see a single dashboard showing all my passive earnings across every platform."*
+> *"I never check individual platforms — a weekly digest tells me exactly what I've earned everywhere."*
 
-**Actor:** User
-**Trigger:** User opens dashboard or views daily/weekly digest
+**Automation Tier:** Tier 1 (auto-collection) + Tier 3 (one-time account linking)
+
+**Actor:** System (collects earnings automatically), User (reads digest)
+**Trigger:** Scheduled collection jobs (background), weekly/monthly digest notification
+
 **Flow:**
-1. System periodically checks configured passive income sources
-2. Earnings data is aggregated into unified format (AUD)
-3. Dashboard displays: today's earnings, this week, this month, all-time
-4. Breakdown by source with trend graphs
+1. System periodically scrapes/polls all configured passive income sources (no user action)
+2. Earnings data is auto-aggregated into unified AUD format (foreign currencies auto-converted)
+3. Weekly digest notification sent: total earned, breakdown by source, trend vs last week
+4. Dashboard available for deep-dive but **not required** — the digest is the primary interface
+5. System auto-detects stalled sources (e.g., Honeygain offline for 3 days) and alerts user
 
 **Tracked Sources:**
-| Source | Data Point | Collection Method |
-|---|---|---|
-| Microsoft Rewards | Points balance & daily points | Playwright automation |
-| Google Opinion Rewards | Credits earned | Manual input (no API) |
-| Honeygain | Earnings (USD→AUD) | API/scrape dashboard |
-| EarnApp | Earnings (USD→AUD) | API/scrape dashboard |
-| Pawns.app | Earnings (USD→AUD) | API/scrape dashboard |
-| Cashrewards | Pending cashback | Scrape account page |
-| ShopBack | Pending cashback | Scrape account page |
-| Survey earnings | Per-platform totals | Manual input with quick-entry |
+| Source | Data Point | Collection Method | User Effort |
+|---|---|---|---|
+| Microsoft Rewards | Points balance & daily tasks | Playwright auto-completes daily tasks | Tier 1: zero (auto-earns) |
+| Honeygain | Earnings (USD→AUD) | API/scrape dashboard | Tier 3: install once, then auto |
+| EarnApp | Earnings (USD→AUD) | API/scrape dashboard | Tier 3: install once, then auto |
+| Pawns.app | Earnings (USD→AUD) | API/scrape dashboard | Tier 3: install once, then auto |
+| Cashrewards | Pending cashback | Scrape account page | Tier 3: link once, then auto |
+| ShopBack | Pending cashback | Scrape account page | Tier 3: link once, then auto |
+| Google Opinion Rewards | Credits earned | Manual input (no API available) | Quick-entry prompt in digest |
+| Survey earnings | Per-platform totals | Manual input with quick-entry | Quick-entry prompt in digest |
+
+**Toil Reduction:**
+- Microsoft Rewards daily tasks are **auto-completed by Playwright** — user earns points without lifting a finger
+- Only 2 sources (Google Opinion Rewards, surveys) require manual input — digest includes a quick-entry prompt: "Earned anything on surveys this week? Reply with amount"
+- Stale source detection: if a passive source stops reporting, system alerts user to check it
 
 **Acceptance Criteria:**
 - Single unified view in AUD (auto-convert foreign currencies)
+- Weekly digest notification is the primary interface — dashboard is optional
 - Historical data stored for trend analysis
-- Monthly summary email/notification: "You earned $X this month"
-- No credentials stored for manual-input sources
+- Auto-detection of stalled/broken sources with fix suggestions
+- Monthly summary: "You earned $X this month — up/down Y% vs last month"
+- Manual-input sources limited to absolute minimum; prompt for input via notification
 
 ---
 
 ### UC4: Bank & Card Bonus Tracker
 
-> *"I see all available bank sign-up bonuses and credit card welcome offers, track requirements, and know when I'm eligible again."*
+> *"The system finds bonuses, tracks my progress automatically, and warns me before I miss a deadline."*
 
-**Actor:** User
-**Trigger:** New bonus detected, or user checks tracker
+**Automation Tier:** Tier 1 (discovery + monitoring) + Tier 2 (progress tracking with bank connection)
+
+**Actor:** System (discovers and monitors), User (decides which bonuses to pursue)
+**Trigger:** New bonus detected, or active bonus deadline approaching
+
 **Flow:**
-1. System monitors Point Hacks, Finder, and bank pages for current offers
+1. System monitors Point Hacks, Finder, and bank pages for current offers (Tier 1, autonomous)
 2. Offers are normalised: bonus amount, requirements, deadline, cooling-off period
-3. User marks offers as: interested → applied → in progress → completed → bonus received
-4. System tracks requirement progress (e.g., "3 of 5 card purchases made")
-5. System calculates cooldown ("Eligible for ING bonus again: March 2027")
+3. High-value new offers trigger alert: "New ING bonus: $150 for $1K deposit + 5 purchases in 60 days — [Start tracking →]"
+4. User clicks to track (Tier 2, one-click) — system creates requirement checklist automatically
+5. If bank API connected (Up Bank / CDR), system **auto-monitors progress** against requirements
+6. Proactive nudges: "ING bonus: 3/5 purchases done, 12 days remaining — you're on track" or "WARNING: 2/5 purchases, only 3 days left"
+7. System auto-calculates cooldown periods: "Eligible for ING bonus again: March 2027"
+8. When cooldown expires, system auto-alerts: "You're eligible for ING bonus again — new offer available"
 
 **Sources:**
 | Source | Type | Integration |
@@ -225,26 +279,39 @@ Buy via ShopBack (8% cashback)
 - HSBC Platinum: $200-300 cashback
 - Various others via Point Hacks feed
 
+**Toil Reduction:**
+- User never browses Point Hacks or Finder manually — system surfaces relevant bonuses
+- Progress tracking is automatic when bank API connected; manual fallback is a simple checklist
+- Proactive warnings prevent missed deadlines (the #1 way people lose bonus value)
+- Cooldown re-eligibility alerts mean users never forget to re-apply
+
 **Acceptance Criteria:**
-- Offers updated daily
-- Cooldown tracking per bank/issuer
-- Requirements checklist per active application
+- Offers updated daily (autonomous)
+- One-click to start tracking a bonus
+- Auto-progress monitoring via bank API (or manual checklist fallback)
+- Proactive deadline warnings at 75%, 50%, 25% time remaining
+- Cooldown tracking per bank/issuer with re-eligibility alerts
 - Estimated value in AUD (points converted at standard redemption rates)
-- Alert when new high-value offer appears (threshold configurable)
 
 ---
 
 ### UC5: Government Rebate Checker
 
-> *"I enter my state and basic details, and the app tells me which rebates I'm missing."*
+> *"I told the system my state once — it found $1,200 in rebates I didn't know about and reminds me when new ones open."*
 
-**Actor:** User (one-time setup, periodic re-check)
-**Trigger:** Initial setup, or annual review reminder
+**Automation Tier:** Tier 3 (one-time profile setup) → Tier 1 (autonomous monitoring)
+
+**Actor:** System (monitors rebate changes), User (claims rebates via provided links)
+**Trigger:** Initial profile setup, new rebate detected, annual re-check, or budget announcement
+
 **Flow:**
-1. User selects state/territory and answers basic eligibility questions
-2. System matches against known rebates and concessions database
-3. Presents list of applicable rebates with: value, how to claim, direct link
-4. Tracks which ones user has claimed
+1. User selects state/territory and answers basic eligibility questions once (Tier 3 setup, ~2 minutes)
+2. System immediately matches against known rebates database and presents actionable list
+3. Each rebate shows: value, one-line eligibility summary, **direct claim link**, deadline
+4. System monitors government websites via changedetection.io for new/changed rebates (Tier 1, autonomous)
+5. When federal/state budget announced, system auto-scans for new rebates matching user profile
+6. Annual reminder to re-check eligibility (circumstances may change)
+7. System tracks claimed vs unclaimed — shows "unclaimed money on the table: $X"
 
 **Rebates Database (by State):**
 
@@ -264,26 +331,44 @@ Buy via ShopBack (8% cashback)
 | First Home Owner Grant | All (varies) | $10,000-30,000 | One-time |
 | Stamp duty concessions | All (varies) | Varies | One-time |
 
+**Toil Reduction:**
+- 2-minute setup, then fully autonomous
+- User never needs to search government websites
+- Budget announcements auto-scanned — user is first to know about new rebates
+- "Unclaimed money" counter creates urgency without requiring the user to remember
+
 **Acceptance Criteria:**
-- State-specific filtering
-- Direct links to claim pages
-- Annual reminder to re-check eligibility
+- State-specific filtering from one-time profile
+- Direct claim links (user clicks, lands on government claim page)
+- Autonomous monitoring for new/changed rebates via changedetection.io
+- Annual re-check reminder with updated eligibility
+- "Unclaimed value" summary: total $ user is leaving on the table
 - Data sourced from government websites (energy.gov.au, servicesaustralia.gov.au, state portals)
 
 ---
 
 ### UC6: Price Watch
 
-> *"I add products I want and set target prices. The app alerts me when the price drops."*
+> *"I paste a URL once. The system watches the price, and when it drops, the alert already includes the cheapest way to buy it."*
 
-**Actor:** User
-**Trigger:** Price drops below user-defined target
+**Automation Tier:** Tier 3 (paste URL once) → Tier 1 (autonomous monitoring) → Tier 2 (one-click buy)
+
+**Actor:** System (monitors prices, computes optimal purchase route), User (pastes URL, acts on alerts)
+**Trigger:** Price drops below user-defined target (or auto-suggested target based on price history)
+
 **Flow:**
-1. User adds product URL(s) or search term + target price
-2. changedetection.io monitors the product page(s) on a schedule
-3. When price drops below target, system triggers alert
-4. Alert includes: current price, target price, savings amount, cashback route (UC2)
-5. Price history is stored and graphed
+1. User pastes product URL — system auto-detects retailer, product name, and current price
+2. System suggests a target price based on historical lows (if available) — user can adjust or accept
+3. changedetection.io monitors the product page on a schedule (Tier 1, autonomous)
+4. When price drops below target, alert fires with **pre-computed optimal purchase route**:
+   - Best cashback platform and rate (UC2)
+   - Active coupon codes
+   - Card bonus if applicable
+   - Effective final price after all savings
+5. Alert includes one-click buy link through best cashback route
+6. Price history stored and graphed; system learns seasonal patterns over time
+
+**Auto-Watch (future):** When bank API connected, system can auto-detect repeat purchases and suggest price watches for frequently bought items.
 
 **Monitored Retailers:**
 - Amazon Australia (amazon.com.au)
@@ -296,27 +381,40 @@ Buy via ShopBack (8% cashback)
 - Bunnings (bunnings.com.au)
 - Chemist Warehouse (chemistwarehouse.com.au)
 
+**Toil Reduction:**
+- Paste a URL — that's it. No manual price entry, no retailer selection, no target guessing
+- Target price auto-suggested from history (user can override)
+- Alert is actionable: one-click buy link with cashback pre-applied
+- User never needs to check the price themselves
+
 **Acceptance Criteria:**
+- Add product via URL paste — auto-detect retailer, name, price
+- Auto-suggest target price from historical data
 - Price checks at configurable intervals (default: every 4 hours)
 - Price history graph per product
-- Alert combines with cashback data: "JB Hi-Fi dropped to $399 + 5% via Cashrewards = effective $379"
-- Support for adding products via URL paste
+- Alert combines price drop + cashback + coupon into single actionable notification
+- One-click buy link through optimal cashback route
 - Powered by changedetection.io (self-hosted Docker container)
 
 ---
 
 ### UC7: Subscription Audit
 
-> *"I see all my recurring subscriptions and get suggestions for cheaper alternatives."*
+> *"The system found 3 subscriptions I forgot about and a phone plan $20/month cheaper — I didn't even ask."*
 
-**Actor:** User
-**Trigger:** User opens subscription view, or monthly audit reminder
+**Automation Tier:** Tier 1 (auto-discovery with bank API) or Tier 3 (manual entry once) → Tier 1 (autonomous monitoring)
+
+**Actor:** System (discovers, monitors, compares), User (acts on switch recommendations)
+**Trigger:** New subscription detected, cheaper alternative found, or free trial expiring
+
 **Flow:**
-1. User enters subscriptions manually (or imports via bank transaction data if Open Banking connected)
-2. System categorises subscriptions (streaming, telco, energy, insurance, software)
-3. System compares against current market rates for each category
-4. Presents: total monthly spend, savings opportunities, unused subscription flags
-5. Alerts before free trial expirations
+1. **With bank API (ideal):** System auto-discovers recurring charges from transaction history — no manual entry
+2. **Without bank API:** User enters subscriptions via Wallos, or imports a bank statement CSV — one-time effort
+3. System auto-categorises subscriptions (streaming, telco, energy, insurance, software)
+4. System periodically compares each subscription against current market rates (autonomous)
+5. When cheaper alternative found: "Your Telstra plan is $65/mo — Belong offers same data for $45/mo. [Switch →]"
+6. Auto-detects subscriptions user may have forgotten (charged but never used/logged in)
+7. Free trial expiry alerts fire automatically — "Netflix trial ends in 3 days. Keep or cancel? [Keep] [Cancel link →]"
 
 **Comparison Sources:**
 - Telco/broadband: WhistleOut, Finder
@@ -326,26 +424,39 @@ Buy via ShopBack (8% cashback)
 
 **Integration:** Wallos (self-hosted subscription tracker, Docker)
 
+**Toil Reduction:**
+- With bank API: zero manual entry — subscriptions auto-discovered from transactions
+- Without bank API: enter once in Wallos, system handles everything after
+- User never needs to comparison-shop — system does it and presents the switch recommendation
+- "Forgotten subscription" detection catches money leaks the user didn't know about
+- Trial expiry alerts include a direct cancel link — one click to stop unwanted charges
+
 **Acceptance Criteria:**
+- Auto-discovery of subscriptions from bank transactions (when connected)
 - Total monthly/annual subscription cost visible at a glance
-- "You could save $X/month by switching to [alternative]" suggestions
-- Free trial expiry alerts (configurable: 3 days, 7 days before)
+- Proactive "switch and save" recommendations with direct links
+- Forgotten/unused subscription detection
+- Free trial expiry alerts with one-click cancel link (3 and 7 days before)
 - Categories with colour-coded spending breakdown
 
 ---
 
 ### UC8: Referral Manager
 
-> *"I manage all my referral links and get alerted when high-value referral promos launch."*
+> *"When a service I use launches a referral bonus, I get alerted with my link ready to share — zero effort."*
 
-**Actor:** User
-**Trigger:** New referral promo detected, or user shares a referral link
+**Automation Tier:** Tier 3 (enter links once) → Tier 1 (autonomous monitoring + auto-embed)
+
+**Actor:** System (monitors programs, embeds links), User (shares when alerted)
+**Trigger:** New/increased referral bonus detected for a service the user has a link for
+
 **Flow:**
-1. System maintains database of Australian referral programs and current bonus amounts
-2. User stores their personal referral links/codes
-3. When a high-value referral promo launches, user is alerted
-4. User tracks: link shared → person signed up → bonus received
-5. System shows total referral earnings
+1. System maintains and auto-updates database of Australian referral programs and current bonus amounts (Tier 1)
+2. User enters their personal referral links/codes once per service (Tier 3 setup)
+3. When a high-value referral promo launches for a linked service, user is alerted with **their link pre-loaded**: "ING referral bonus increased to $100 — share your link: [Copy →]"
+4. System auto-embeds user's referral links into relevant deal notifications — e.g., when recommending Up Bank in UC4, user's Up referral link is included
+5. If bank API connected, system auto-detects when a referral bonus has been received
+6. System tracks: link shared → person signed up → bonus received → total earnings
 
 **Active Referral Programs (Australian):**
 | Service | Referral Bonus | Category |
@@ -367,27 +478,46 @@ Buy via ShopBack (8% cashback)
 | DoorDash | $10-20 | Food delivery |
 | HelloFresh | $50-100 off first box | Meal kits |
 
+**Toil Reduction:**
+- Enter referral links once — system handles the rest
+- Referral links auto-embedded into relevant notifications across other use cases
+- User never needs to check if a referral promo is running — system monitors and alerts
+- Bonus receipt auto-detected via bank API when connected
+
 **Acceptance Criteria:**
-- Searchable database of current AU referral programs
-- Personal referral link storage (encrypted)
-- Track referral status: shared → pending → received
-- Alert on new/increased referral bonuses
+- Auto-updated database of current AU referral programs
+- Personal referral link storage (encrypted at rest)
+- Referral links auto-embedded into cross-UC notifications where relevant
+- Alert on new/increased bonuses with user's link pre-loaded and ready to share
+- Auto-detect bonus receipt via bank API (or manual confirmation fallback)
 - Monthly referral earnings summary
 
 ---
 
 ### UC9: Class Action Monitor
 
-> *"I get notified when class action registrations open that I might be eligible for."*
+> *"I got $340 from a bank fee class action I didn't even know existed — the system found it, matched it, and told me to register."*
 
-**Actor:** User
-**Trigger:** New class action registration opens
+**Automation Tier:** Tier 1 (autonomous discovery + matching) → Tier 2 (one-click registration)
+
+**Actor:** System (discovers and matches), User (registers via provided link)
+**Trigger:** New class action detected that matches user profile
+
 **Flow:**
-1. System monitors major Australian class action law firm websites
-2. New actions are parsed: description, eligibility criteria, registration deadline, law firm
-3. System matches against user profile (banks used, products owned, employers, shares held)
-4. If potential match, user is alerted
-5. User tracks: notified → registered → pending → payout received
+1. System monitors major Australian class action law firm websites via changedetection.io (Tier 1, autonomous)
+2. New actions auto-parsed: description, eligibility criteria, registration deadline, law firm
+3. System auto-matches against user profile — banks used, products owned, employers, super fund, shares held
+4. If potential match: "Class action against [Bank] for fee overcharging — you bank with them. Register by [date]. [Register →]"
+5. Notification includes: eligibility likelihood (high/medium/low), estimated payout range, direct registration link
+6. System tracks: notified → registered → pending → payout received
+7. Deadline reminders sent if user hasn't registered yet: "Registration closes in 7 days"
+
+**Profile Matching (auto-enriched):**
+- Banks/cards: auto-populated from UC4 and bank API connections
+- Super fund: entered once during setup
+- Employers: entered once (for wage theft / underpayment actions)
+- Products/services: auto-built from subscription data (UC7) and purchase history
+- Shares: entered once (for shareholder class actions)
 
 **Monitored Sources:**
 - Maurice Blackburn (mauriceblackburn.com.au/class-actions)
@@ -406,28 +536,47 @@ Buy via ShopBack (8% cashback)
 
 **Integration Method:** changedetection.io monitoring of law firm class action pages
 
+**Toil Reduction:**
+- User never needs to check law firm websites — system monitors all of them
+- Profile auto-enriched from other use cases (banks from UC4, subscriptions from UC7)
+- Eligibility matching is automatic — user only sees actions relevant to them
+- Deadline reminders prevent missed registrations (free money left on the table)
+
 **Acceptance Criteria:**
 - New class actions detected within 24 hours of posting
-- Basic eligibility matching against user profile
-- Registration deadline alerts
-- Direct link to registration page
+- Auto-matching against user profile with confidence level
+- Direct registration link in every alert
+- Deadline reminder if user hasn't registered (7 days and 1 day before)
 - Track status through to payout
+- Profile auto-enriched from other UC data — minimal manual entry
 
 ---
 
 ### UC10: Smart Grocery Savings
 
-> *"I see this week's best deals at Coles and Woolworths for items on my shopping list."*
+> *"Every Wednesday I get a message: 'Your regular items are on special this week — buy coffee at Coles (half price), buy nappies at Woolies (10x points).'"*
 
-**Actor:** User
-**Trigger:** Weekly catalogue release (typically Wednesday), or user checks before shopping
+**Automation Tier:** Tier 3 (build shopping list once) → Tier 1 (autonomous weekly alerts)
+
+**Actor:** System (monitors catalogues, matches, optimises), User (shops with optimised list)
+**Trigger:** Weekly catalogue release (typically Wednesday) — fully automatic
+
 **Flow:**
-1. User maintains a shopping list of regular items
-2. System ingests weekly Coles and Woolworths specials
-3. Matches specials against shopping list
-4. Highlights: half-price items, Flybuys/Everyday Rewards bonus offers, price-per-unit comparisons
-5. Suggests optimal store split: "Buy X at Coles (half price), Y at Woolworths (10x points)"
-6. Checks Too Good To Go for nearby surplus food bags
+1. User builds a shopping list of regular items once (or system auto-builds from bank transaction history if connected)
+2. System auto-ingests weekly Coles and Woolworths specials every Wednesday (Tier 1, autonomous)
+3. Auto-matches specials against shopping list
+4. Wednesday evening notification: optimised shopping plan for the week
+   - Which items are on special and where
+   - Optimal store split: "Buy X at Coles (half price), Y at Woolworths (10x points)"
+   - Loyalty points optimisation: which store gives bonus points this week
+   - Cashback route if available for online grocery orders
+5. System learns purchase patterns over time — auto-adds frequently bought items to list
+6. Checks Too Good To Go for nearby surplus food bags and alerts if good value
+
+**Auto-List Building (with bank API):**
+- System analyses grocery transaction history to identify regular purchase categories
+- Suggests items to add to the watch list: "You spend ~$15/week on coffee — want to track specials?"
+- Over time, the shopping list is fully auto-maintained
 
 **Sources:**
 - Coles/Woolworths digital catalogues (via scraping or Frugl data)
@@ -435,12 +584,20 @@ Buy via ShopBack (8% cashback)
 - Too Good To Go app (surplus food, ~1/3 price)
 - Frugal Feeds (fast food and restaurant deals)
 
+**Toil Reduction:**
+- Set up list once (or let bank API auto-build it) — weekly alerts are fully automatic
+- User never browses catalogues — system does it and presents only relevant specials
+- Store-split optimisation done for you — no mental math about where to shop
+- System learns and auto-adds frequent purchases over time
+
 **Acceptance Criteria:**
-- Updated when new catalogues drop (Wednesday)
-- Shopping list with price history per item
-- "Best buy this week" recommendations
+- Auto-ingest catalogues every Wednesday (no user action)
+- Shopping list auto-builds from purchase history (or manual setup)
+- Weekly notification with optimised shopping plan
+- "Best buy this week" recommendations with store-split
 - Price per unit/kg comparison between stores
-- Loyalty points optimisation: "This shop earns 3x Flybuys points at Coles"
+- Loyalty points optimisation included in recommendations
+- System learns purchase patterns and auto-suggests list additions
 
 ---
 
@@ -814,7 +971,87 @@ External Source → Adapter (fetch + normalise) → Core Engine (match + score +
 
 ---
 
-## 11. Risk & Compliance
+## 11. Bank Connection & Data Access
+
+### Core Principle
+
+**DealMe never stores bank credentials and never initiates transactions.** Bank access is strictly read-only observation to enhance automation. The app works fully without any bank connection — connecting a bank is an optional upgrade that unlocks deeper automation.
+
+### Access Tiers
+
+| Tier | Method | Access Level | User Effort | What It Unlocks |
+|---|---|---|---|---|
+| **Tier A: No Bank (default)** | None | No bank data | Zero | Everything works — manual input where needed |
+| **Tier B: CSV Import** | User uploads bank statement | Snapshot of past transactions | Per-import (manual) | Subscription auto-discovery (UC7), spending insights, grocery list suggestions (UC10) |
+| **Tier C: Up Bank API** | User generates personal API token | Read-only live transactions | One-time token setup | Auto-progress tracking for bonuses (UC4), cashback verification (UC2), subscription auto-discovery (UC7), referral payout detection (UC8) |
+| **Tier D: Open Banking (CDR)** | Australia's Consumer Data Right | Read-only, consented, regulated | One-time consent flow | Same as Tier C but for any participating AU bank. Requires formal accreditation (Phase 5+) |
+
+### What Each Tier Enables
+
+```
+Tier A (No Bank):
+  UC1  Deal Discovery .............. ✅ Full functionality
+  UC2  Cashback Optimiser .......... ✅ Full (cashback rates from scraping)
+  UC3  Passive Earnings ............ ⚠️ Manual input for some sources
+  UC4  Bank Bonus Tracker .......... ⚠️ Manual progress checklist
+  UC5  Government Rebates .......... ✅ Full functionality
+  UC6  Price Watch ................. ✅ Full functionality
+  UC7  Subscription Audit .......... ⚠️ Manual entry in Wallos
+  UC8  Referral Manager ............ ⚠️ Manual payout confirmation
+  UC9  Class Action Monitor ........ ✅ Full functionality
+  UC10 Grocery Savings ............. ⚠️ Manual shopping list
+
+Tier B (CSV Import) — adds:
+  UC7  Subscription Audit .......... ✅ Auto-discovered from transactions
+  UC10 Grocery Savings ............. ✅ Auto-suggested shopping list
+
+Tier C (Up Bank API) — adds:
+  UC3  Passive Earnings ............ ✅ Auto-detect cashback payouts
+  UC4  Bank Bonus Tracker .......... ✅ Auto-progress monitoring
+  UC7  Subscription Audit .......... ✅ Live subscription detection
+  UC8  Referral Manager ............ ✅ Auto-detect referral payouts
+  UC10 Grocery Savings ............. ✅ Auto-maintained shopping list
+
+Tier D (CDR / Open Banking) — same as Tier C for any participating bank
+```
+
+### Security Guarantees
+
+| Guarantee | Implementation |
+|---|---|
+| **No bank credentials stored** | Up Bank uses a user-generated API token (not username/password). CDR uses OAuth2 consent flow. Neither requires bank login credentials |
+| **Read-only access only** | Up Bank API is read-only by design. CDR consent scoped to transaction read only |
+| **No transactions initiated** | The system NEVER moves money, makes payments, or initiates transfers. P5 (Zero Tolerance) — system recommends, user executes |
+| **Token encrypted at rest** | Up Bank API token encrypted via ASP.NET Core Data Protection API |
+| **User-revocable at any time** | Up Bank token can be revoked instantly from the Up app. CDR consent revocable via bank |
+| **Data stays local** | Self-hosted — bank transaction data never leaves the user's machine |
+| **No screen scraping of bank logins** | Playwright is used for public retail sites only, NEVER for bank login pages |
+
+### Up Bank API Details
+
+Up Bank is one of the few Australian banks with a public REST API:
+- **Base URL:** `https://api.up.com.au/api/v1`
+- **Auth:** Bearer token (user generates in Up app under Settings → API)
+- **Endpoints used:**
+  - `GET /accounts` — list accounts and balances
+  - `GET /transactions` — list transactions with filtering (date, category, status)
+  - `GET /categories` — transaction categories
+- **Rate limit:** Reasonable (undocumented, but generous for personal use)
+- **Data:** Transaction descriptions, amounts, dates, categories, merchant info
+- **Limitations:** Up Bank customers only (~500K users as of 2026)
+
+### Consumer Data Right (CDR) — Phase 5+
+
+CDR is Australia's government-mandated Open Banking framework:
+- **Requires formal accreditation** as an Accredited Data Recipient (ADR) — significant compliance overhead
+- **Covers:** ANZ, CBA, NAB, Westpac, Macquarie, ING, and 100+ other participants
+- **Access:** OAuth2 consent flow, read-only, time-limited consent
+- **Why deferred:** Accreditation requires legal entity, compliance documentation, security audit. Not viable for MVP/early phases. Explore via CDR sandbox first
+- **Alternative:** Unrestricted CDR access is possible via a CDR Representative model (partnering with an existing ADR)
+
+---
+
+## 12. Risk & Compliance
 
 ### Legal Compliance
 
