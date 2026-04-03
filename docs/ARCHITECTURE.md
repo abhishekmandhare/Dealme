@@ -48,7 +48,6 @@ graph TB
     style Grocery fill:#999,stroke:#888,color:#fff
     style Notif fill:#999,stroke:#888,color:#fff
 ```
-```
 
 **Legend:** 🟦 Blue = DealMe system | ⬜ Grey = External system
 
