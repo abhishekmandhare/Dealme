@@ -1,4 +1,4 @@
-# DealMe - Architecture Diagrams (C4 Model)
+# DealMe - Architecture (C4 Model)
 
 > Rendered natively in VS Code (Ctrl+Shift+V) and on GitHub.
 
@@ -6,90 +6,62 @@
 
 ## C4 Level 1: System Context
 
-Who uses DealMe and what external systems does it talk to?
-
 ```mermaid
 graph TB
     User["👤 DealMe User<br/><i>Australian resident wanting to<br/>automatically earn & save money</i>"]
 
-    DealMe["🟦 DealMe Platform<br/><i>Self-hosted platform that autonomously<br/>discovers, tracks, and optimises<br/>earnings and savings</i>"]
+    DealMe["🟦 DealMe Platform<br/><i>Self-hosted platform that discovers<br/>deals, tracks prices, and sends alerts</i>"]
 
     Deals["⬜ Deal Sources<br/><i>OzBargain, Cheapies,<br/>Frugal Feeds, TopBargains</i>"]
-    Cashback["⬜ Cashback Platforms<br/><i>Cashrewards, ShopBack,<br/>RetailMeNot AU</i>"]
-    Rewards["⬜ Rewards & Passive Income<br/><i>Microsoft Rewards,<br/>Honeygain, EarnApp</i>"]
-    Banking["⬜ Banking APIs<br/><i>Up Bank REST API,<br/>Consumer Data Right</i>"]
-    FinInfo["⬜ Financial Info Sites<br/><i>Point Hacks, Finder,<br/>Bank offer pages</i>"]
-    Govt["⬜ Government Portals<br/><i>energy.gov.au,<br/>state portals</i>"]
-    Legal["⬜ Class Action Sources<br/><i>Maurice Blackburn, Slater & Gordon,<br/>Shine, Federal Court</i>"]
-    Grocery["⬜ Grocery & Food<br/><i>Coles, Woolworths,<br/>Too Good To Go</i>"]
-    Notif["⬜ Notification Channels<br/><i>Discord, Telegram, Email,<br/>SMS, Slack — 90+ via Apprise</i>"]
+    Cashback["⬜ Cashback Platforms<br/><i>TopCashback, ShopBack</i>"]
+    FinInfo["⬜ Financial Info<br/><i>Point Hacks, Finder,<br/>Bank offer pages</i>"]
+    Notif["⬜ Notification Channels<br/><i>Discord, Telegram, Email<br/>— 90+ via Apprise</i>"]
 
-    User -->|"Views dashboard,<br/>receives alerts,<br/>acts on recommendations"| DealMe
+    User -->|"Views dashboard,<br/>receives alerts"| DealMe
 
     DealMe -->|"Polls deals [RSS]"| Deals
     DealMe -->|"Scrapes rates [HTTP]"| Cashback
-    DealMe -->|"Automates tasks,<br/>reads earnings [Playwright/API]"| Rewards
-    DealMe -->|"Reads transactions<br/>read-only [REST API]"| Banking
-    DealMe -->|"Scrapes offers,<br/>monitors changes [HTTP]"| FinInfo
-    DealMe -->|"Monitors rebate pages<br/>[Webhooks]"| Govt
-    DealMe -->|"Monitors class actions<br/>[Webhooks]"| Legal
-    DealMe -->|"Scrapes weekly specials<br/>[HTTP]"| Grocery
-    DealMe -->|"Sends alerts<br/>[HTTP API]"| Notif
+    DealMe -->|"Monitors changes [HTTP]"| FinInfo
+    DealMe -->|"Sends alerts [HTTP API]"| Notif
 
     style DealMe fill:#1168BD,stroke:#0E5AA7,color:#fff
     style User fill:#08427B,stroke:#073B6F,color:#fff
     style Deals fill:#999,stroke:#888,color:#fff
     style Cashback fill:#999,stroke:#888,color:#fff
-    style Rewards fill:#999,stroke:#888,color:#fff
-    style Banking fill:#999,stroke:#888,color:#fff
     style FinInfo fill:#999,stroke:#888,color:#fff
-    style Govt fill:#999,stroke:#888,color:#fff
-    style Legal fill:#999,stroke:#888,color:#fff
-    style Grocery fill:#999,stroke:#888,color:#fff
     style Notif fill:#999,stroke:#888,color:#fff
 ```
 
 **Legend:** 🟦 Blue = DealMe system | ⬜ Grey = External system
 
+**Future external systems** (Phase 2+): Banking APIs (Up Bank, CDR), Rewards & Passive Income (MS Rewards, Honeygain, EarnApp), Government Portals, Class Action Sources, Grocery & Food.
+
 ---
 
 ## C4 Level 2: Container Diagram
-
-What Docker containers make up DealMe and how do they communicate?
 
 ```mermaid
 graph TB
     User["DealMe User"]
 
-    Dashboard["Web Dashboard<br/>React TypeScript<br/><br/>Deal feed, price watches,<br/>earnings, settings"]
-    API["Core API<br/>ASP.NET Core 9<br/><br/>Business logic, matching,<br/>scoring, dedup, Hangfire"]
-    DB["Database<br/>SQLite MVP / PostgreSQL"]
-    CDIO["changedetection.io<br/>Port 5000<br/><br/>Price monitoring"]
-    Apprise["Apprise<br/>Port 8000<br/><br/>Notifications 90+ channels"]
-    Wallos["Wallos<br/>Port 8282<br/><br/>Subscription tracking"]
-    N8N["n8n Optional<br/>Port 5678<br/><br/>Workflow automation"]
+    Dashboard["Web Dashboard<br/>React + TypeScript<br/><br/>Deal feed, price watches,<br/>settings"]
+    API["Core API<br/>ASP.NET Core 9<br/><br/>Pipeline, adapters,<br/>Hangfire scheduler"]
+    DB[("SQLite<br/>MVP Database")]
+    CDIO["changedetection.io<br/>Port 5000<br/><br/>Price & page monitoring"]
+    Apprise["Apprise<br/>Port 8000<br/><br/>Notifications<br/>90+ channels"]
 
-    RSS["RSS Deal Sources<br/>OzBargain Cheapies"]
-    Scrape["Scrape Targets<br/>Cashrewards ShopBack"]
-    APIs["API Sources<br/>Up Bank Honeygain"]
-    Monitored["Monitored Sites<br/>Bank pages Govt portals"]
-    RewardSites["Rewards Sites<br/>Microsoft Rewards"]
-    Devices["User Devices<br/>Discord Telegram Email"]
+    External["External Sources<br/>RSS, Scrape targets"]
+    Devices["User Devices<br/>Discord, Telegram, Email"]
 
     User -->|HTTPS| Dashboard
     User -.->|Alerts| Devices
     Dashboard -->|REST JSON| API
     API -->|EF Core| DB
-    API -->|HTTP 8000| Apprise
-    API -->|HTTP 5000| CDIO
+    API -->|HTTP| Apprise
+    API -->|HTTP| CDIO
     CDIO -->|Webhooks| API
-    API -->|HTTP 8282| Wallos
-    API -->|HTTP 5678| N8N
-    API -->|Poll RSS| RSS
-    API -->|Scrape| Scrape
-    API -->|REST| APIs
-    API -->|Playwright| RewardSites
-    CDIO -->|Monitor| Monitored
+    API -->|Poll / Scrape| External
+    CDIO -->|Monitor| External
     Apprise -->|Deliver| Devices
 
     style User fill:#08427B,stroke:#073B6F,color:#fff
@@ -98,185 +70,113 @@ graph TB
     style DB fill:#438DD5,stroke:#3C7FC0,color:#fff
     style CDIO fill:#438DD5,stroke:#3C7FC0,color:#fff
     style Apprise fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style Wallos fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style N8N fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style RSS fill:#999,stroke:#888,color:#fff
-    style Scrape fill:#999,stroke:#888,color:#fff
-    style APIs fill:#999,stroke:#888,color:#fff
-    style Monitored fill:#999,stroke:#888,color:#fff
-    style RewardSites fill:#999,stroke:#888,color:#fff
+    style External fill:#999,stroke:#888,color:#fff
     style Devices fill:#999,stroke:#888,color:#fff
 ```
 
-<details>
-<summary><b>Container Descriptions</b></summary>
-
-- **Web Dashboard** (React + TypeScript): User-facing interface for viewing deals, price watches, earnings, and managing settings
-- **Core API** (ASP.NET Core 9): Backend business logic, Matching Engine, Scoring Engine, Dedup, Hangfire scheduler, Playwright runtime
-- **Database** (SQLite MVP / PostgreSQL): Opportunities, UserPreferences, Earnings, PriceHistory, AuditLog, BonusTracking
-- **changedetection.io** (Docker :5000): Price and page change monitoring
-- **Apprise** (Docker :8000): Notification gateway to 90+ channels
-- **Wallos** (Docker :8282): Subscription tracking
-- **n8n** (Docker :5678, optional): Complex workflow automation
-
-</details>
+| Container | Port | Role |
+|---|---|---|
+| dealme-api | 5001 | ASP.NET Core 9 + Hangfire |
+| dealme-web | 80/443 | React SPA + Nginx |
+| changedetection.io | 5000 | Price/page monitoring |
+| Apprise | 8000 | Notification gateway |
 
 ---
 
 ## C4 Level 3: Core API Components
-
-What services live inside the Core API?
 
 ```mermaid
 graph TB
     Dashboard["Web Dashboard"]
     CDIO["changedetection.io"]
     Apprise["Apprise"]
-    Wallos["Wallos"]
-    DB[("Database")]
-    External["External Sources<br/><i>RSS, Scrape, API</i>"]
+    DB[("SQLite")]
+    External["External Sources<br/><i>RSS, HTTP</i>"]
 
     subgraph API["Core API (ASP.NET Core 9)"]
-        REST["REST API Controllers<br/><i>GET /opportunities<br/>GET /earnings<br/>POST /pricewatches<br/>GET /settings</i>"]
-        Webhook["Webhook Controller<br/><i>Receives webhooks from<br/>changedetection.io, n8n</i>"]
-        Matching["Matching Engine<br/><i>Keyword, category, and<br/>behavioural matching</i>"]
-        Scoring["Scoring Engine<br/><i>ROI ranking, value,<br/>confidence, engagement</i>"]
-        Dedup["Dedup Service<br/><i>Title similarity, URL norm,<br/>product fingerprinting</i>"]
-        CashbackOpt["Cashback Optimiser<br/><i>Best route: cashback +<br/>coupon + card bonus</i>"]
-        Profiler["User Profiler<br/><i>Auto-learns interests<br/>from engagement</i>"]
-        Notifier["Notification Service<br/><i>Formats alerts, quiet hours,<br/>channel preferences</i>"]
-        Scheduler["Adapter Scheduler<br/><i>Hangfire — cron polling,<br/>retry, queue</i>"]
+        REST["REST Controllers<br/><i>GET /opportunities<br/>GET /earnings<br/>POST /pricewatches<br/>GET /settings</i>"]
+        Webhook["Webhook Controller<br/><i>Receives webhooks from<br/>changedetection.io</i>"]
+        Pipeline["Pipeline Service<br/><i>Normalise → Dedup →<br/>Filter → Score → Notify</i>"]
         AdapterHost["Adapter Host<br/><i>Loads IIntegrationAdapter,<br/>routes data into pipeline</i>"]
-        Audit["Audit Logger<br/><i>Immutable log of every<br/>state change</i>"]
-        Prefs["User Preferences<br/><i>Interests, thresholds,<br/>channels, cards, state</i>"]
-        Health["Health Monitor<br/><i>Adapter health, stale data,<br/>failure alerts</i>"]
-        BankConn["Bank Connector<br/><i>Up Bank API / CDR<br/>Read-only, encrypted</i>"]
+        Scheduler["Hangfire Scheduler<br/><i>Cron-based adapter polling</i>"]
+        Notifier["Notification Service<br/><i>Formats alerts,<br/>quiet hours</i>"]
+        EventLog["Event Logger<br/><i>Append-only DomainEvent</i>"]
     end
 
-    Dashboard -->|"REST / JSON"| REST
-    CDIO -->|"Webhooks"| Webhook
+    Dashboard -->|REST / JSON| REST
+    CDIO -->|Webhooks| Webhook
 
-    REST --> Prefs
-    REST --> Matching
-    REST --> Scoring
-    Webhook --> AdapterHost
+    Webhook --> Pipeline
+    Scheduler -->|Triggers on cron| AdapterHost
+    AdapterHost -->|Fetch data| External
+    AdapterHost --> Pipeline
+    Pipeline --> Notifier
+    Notifier -->|Send alerts| Apprise
 
-    Scheduler -->|"Triggers on cron"| AdapterHost
-    AdapterHost --> Dedup
-    Dedup --> Matching
-    Matching --> Scoring
-    Scoring --> CashbackOpt
-    CashbackOpt --> Notifier
-
-    Scoring -.->|"Engagement feedback"| Profiler
-    Profiler -.->|"Updated weights"| Matching
-
-    AdapterHost -->|"Fetch data"| External
-    Notifier -->|"Send alerts"| Apprise
-    AdapterHost --> Wallos
-    BankConn --> AdapterHost
-
-    AdapterHost --> DB
-    Matching --> DB
-    Scoring --> DB
-    Audit --> DB
-    Prefs --> DB
-    Profiler --> DB
-    BankConn --> DB
-
-    Health -.->|"Alert on failure"| Notifier
+    Pipeline --> EventLog
+    Pipeline --> DB
+    REST --> DB
+    EventLog --> DB
 
     style Dashboard fill:#438DD5,stroke:#3C7FC0,color:#fff
     style CDIO fill:#438DD5,stroke:#3C7FC0,color:#fff
     style Apprise fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style Wallos fill:#438DD5,stroke:#3C7FC0,color:#fff
     style DB fill:#438DD5,stroke:#3C7FC0,color:#fff
     style External fill:#999,stroke:#888,color:#fff
     style REST fill:#438DD5,stroke:#3C7FC0,color:#fff
     style Webhook fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style Matching fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style Scoring fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style Dedup fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style CashbackOpt fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style Profiler fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style Notifier fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style Scheduler fill:#438DD5,stroke:#3C7FC0,color:#fff
+    style Pipeline fill:#438DD5,stroke:#3C7FC0,color:#fff
     style AdapterHost fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style Audit fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style Prefs fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style Health fill:#438DD5,stroke:#3C7FC0,color:#fff
-    style BankConn fill:#438DD5,stroke:#3C7FC0,color:#fff
+    style Scheduler fill:#438DD5,stroke:#3C7FC0,color:#fff
+    style Notifier fill:#438DD5,stroke:#3C7FC0,color:#fff
+    style EventLog fill:#438DD5,stroke:#3C7FC0,color:#fff
 ```
 
-**Legend:** Light blue = Component | Blue = Container | Grey = External
+**Pipeline Service** handles the full flow in a single service:
+1. **Normalise** — raw data → `Opportunity` model (AUD, timestamps, confidence)
+2. **Dedup** — check `Source + SourceId` unique constraint; skip if exists
+3. **Filter** — match against user's enabled categories and min value threshold
+4. **Score** — simple value + confidence ranking
+5. **Notify** — send to Apprise if it passes the filter
 
 ---
 
-## C4 Level 3: Adapter Layer
+## Adapter Layer
 
-All 18 adapters implementing `IIntegrationAdapter`, grouped by deployment tier.
+MVP adapters implementing `IIntegrationAdapter`:
 
 ```mermaid
 graph LR
-    Host["Adapter Host<br/><i>Orchestrates all adapters</i>"]
+    Host["Adapter Host"]
     Interface["IIntegrationAdapter<br/><i>FetchAsync()<br/>NormaliseAsync()<br/>HealthCheckAsync()<br/>GetStatusAsync()</i>"]
 
     Host --> Interface
 
-    subgraph Tier1["Tier 1: MVP"]
+    subgraph MVP["MVP Adapters"]
         OzBargain["OzBargain<br/><i>RSS — 5 min</i>"]
         Cheapies["Cheapies<br/><i>RSS — 5 min</i>"]
-        FrugalFeeds["Frugal Feeds<br/><i>RSS — 15 min</i>"]
         CDIOa["changedetection.io<br/><i>Webhook — event</i>"]
-        Apprisea["Apprise<br/><i>HTTP — on demand</i>"]
-    end
-
-    subgraph Tier2["Tier 2: Cashback & Bonuses"]
-        Cashrewards["Cashrewards<br/><i>AngleSharp — 6 hrs</i>"]
-        ShopBack["ShopBack<br/><i>AngleSharp — 6 hrs</i>"]
-        PointHacks["Point Hacks<br/><i>RSS+Scrape — 12 hrs</i>"]
-        Finder["Finder<br/><i>AngleSharp — 12 hrs</i>"]
-        RetailMeNot["RetailMeNot AU<br/><i>AngleSharp — 12 hrs</i>"]
-    end
-
-    subgraph Tier3["Tier 3: Passive Income & Savings"]
-        MSRewards["MS Rewards<br/><i>Playwright — daily 6am</i>"]
-        Honeygain["Honeygain<br/><i>API — 24 hrs</i>"]
-        EarnApp["EarnApp<br/><i>API — 24 hrs</i>"]
-        UpBank["Up Bank<br/><i>REST API — 1 hr</i>"]
-        GovRebate["Govt Rebates<br/><i>Static+Webhook — event</i>"]
-        ClassAction["Class Actions<br/><i>Webhook — event</i>"]
-        Grocery["Grocery<br/><i>AngleSharp — Wed 6pm</i>"]
-        WallosA["Wallos<br/><i>Docker API — 24 hrs</i>"]
     end
 
     OzBargain --> Interface
     Cheapies --> Interface
-    FrugalFeeds --> Interface
     CDIOa --> Interface
-    Apprisea --> Interface
-
-    Cashrewards --> Interface
-    ShopBack --> Interface
-    PointHacks --> Interface
-    Finder --> Interface
-    RetailMeNot --> Interface
-
-    MSRewards --> Interface
-    Honeygain --> Interface
-    EarnApp --> Interface
-    UpBank --> Interface
-    GovRebate --> Interface
-    ClassAction --> Interface
-    Grocery --> Interface
-    WallosA --> Interface
 
     style Host fill:#85BBF0,stroke:#78A8D8,color:#000
     style Interface fill:#85BBF0,stroke:#78A8D8,color:#000
-    style Tier1 fill:#E3F2FD,stroke:#90CAF9,color:#000
-    style Tier2 fill:#FFFDE7,stroke:#FFF59D,color:#000
-    style Tier3 fill:#FCE4EC,stroke:#F8BBD0,color:#000
+    style MVP fill:#E3F2FD,stroke:#90CAF9,color:#000
 ```
+
+### Future Adapters (Phase 2+)
+
+| Tier | Adapters | Method |
+|---|---|---|
+| Cashback | TopCashback, ShopBack, RetailMeNot AU | AngleSharp scraping |
+| Financial | Point Hacks, Finder | RSS + scraping |
+| Passive Income | MS Rewards, Honeygain, EarnApp | Playwright / API |
+| Banking | Up Bank, CDR | REST API |
+| Government | Rebates, Class Actions | Webhooks |
+| Grocery | Coles, Woolworths | AngleSharp scraping |
 
 ### Standard Output: Opportunity
 
@@ -285,138 +185,146 @@ Every adapter normalises its data into this model:
 ```
 Opportunity
 ├── Id: guid
-├── Source: string              ("ozbargain", "cashrewards", etc.)
-├── Type: enum                  (Deal, Cashback, Bonus, Rebate, Earning)
+├── Source: string              ("ozbargain", "cheapies", etc.)
+├── SourceId: string            (original ID from source)
+├── Type: enum                  (Deal, Cashback, Bonus, Rebate, PriceAlert)
+├── Status: enum                (New, Seen, Saved, ActedOn, Dismissed, Expired)
 ├── Title: string
 ├── Description: string
-├── Value: decimal (AUD)
+├── Value: decimal? (AUD)
 ├── Url: string
 ├── ExpiresAt: datetime?
 ├── Confidence: enum            (High, Medium, Low)
 ├── Tags: string[]
 ├── Metadata: Dictionary
-└── CreatedAt: datetime
+├── CreatedAt: datetime
+└── UpdatedAt: datetime
 ```
 
 ---
 
-## Data Flow: Opportunity Pipeline
-
-The 8-stage pipeline from source to user, with a feedback loop.
+## Data Flow
 
 ```mermaid
 graph LR
-    subgraph Fetch["1. FETCH"]
-        RSS["RSS Feeds"]
-        Scrape["Web Scraping"]
-        APIf["REST APIs"]
-        Webhooks["Webhooks"]
-        Browser["Playwright"]
-    end
+    Fetch["1. FETCH<br/><i>RSS / Webhook / Scrape</i>"]
+    Normalise["2. NORMALISE<br/><i>Raw → Opportunity</i>"]
+    Store["3. STORE<br/><i>Dedup check,<br/>filter, score,<br/>write event + state</i>"]
+    Notify["4. NOTIFY<br/><i>Apprise alert<br/>with action link</i>"]
+    Dashboard["DASHBOARD<br/><i>Browse & act</i>"]
 
-    Normalise["2. NORMALISE<br/><i>Raw → Opportunity model<br/>AUD, timestamps,<br/>confidence level</i>"]
-
-    Dedup["3. DEDUPLICATE<br/><i>Title similarity,<br/>URL normalisation,<br/>product fingerprint</i>"]
-
-    Match["4. MATCH<br/><i>User interests:<br/>keywords, categories,<br/>auto-learned weights</i>"]
-
-    Score["5. SCORE & ENRICH<br/><i>ROI ranking +<br/>cashback route +<br/>coupon + card bonus</i>"]
-
-    Store[("6. STORE<br/><i>Opportunities,<br/>PriceHistory,<br/>Earnings, AuditLog</i>")]
-
-    Notify["7a. NOTIFY<br/><i>Apprise — actionable<br/>alerts with buy links</i>"]
-    Dash["7b. DASHBOARD<br/><i>React — browse,<br/>filter, act</i>"]
-
-    Learn["8. LEARN<br/><i>User Profiler:<br/>click = interested<br/>ignore = not interested</i>"]
-
-    RSS --> Normalise
-    Scrape --> Normalise
-    APIf --> Normalise
-    Webhooks --> Normalise
-    Browser --> Normalise
-
-    Normalise --> Dedup --> Match --> Score --> Store
-    Store --> Notify
-    Store --> Dash
-
-    Notify -.->|"engagement tracking"| Learn
-    Learn -.->|"updated interest weights"| Match
+    Fetch --> Normalise --> Store --> Notify
+    Store --> Dashboard
 
     style Fetch fill:#E3F2FD,stroke:#90CAF9,color:#000
     style Normalise fill:#E8F5E9,stroke:#A5D6A7,color:#000
-    style Dedup fill:#FFFDE7,stroke:#FFF59D,color:#000
-    style Match fill:#FFE0B2,stroke:#FFCC80,color:#000
-    style Score fill:#FFCDD2,stroke:#EF9A9A,color:#000
     style Store fill:#F3E5F5,stroke:#CE93D8,color:#000
     style Notify fill:#E0F2F1,stroke:#80DEEA,color:#000
-    style Dash fill:#E0F2F1,stroke:#80DEEA,color:#000
-    style Learn fill:#EDE7F6,stroke:#B39DDB,color:#000
+    style Dashboard fill:#E0F2F1,stroke:#80DEEA,color:#000
 ```
 
 ---
 
-## Deployment: Docker Compose
+## Event-Inspired Hybrid Pattern
+
+Every pipeline run writes an append-only event **before** updating state. Events are never modified or deleted.
+
+```mermaid
+graph LR
+    Pipeline["Pipeline Service"]
+    EventLog[("DomainEvent<br/><i>Append-only</i>")]
+    State[("State Tables<br/><i>Mutable</i>")]
+    Dashboard["Dashboard<br/><i>Reads current state</i>"]
+
+    Pipeline -->|"1. Write event"| EventLog
+    Pipeline -->|"2. Update state"| State
+    State -->|"Fast reads"| Dashboard
+    EventLog -.->|"Audit / debug"| Dashboard
+
+    style EventLog fill:#F3E5F5,stroke:#CE93D8,color:#000
+    style State fill:#E3F2FD,stroke:#90CAF9,color:#000
+    style Pipeline fill:#438DD5,stroke:#3C7FC0,color:#fff
+    style Dashboard fill:#E8F5E9,stroke:#A5D6A7,color:#000
+```
+
+**Why keep events at MVP?** They're cheap (one append-only table), and give you: full audit trail, pipeline debugging via `CorrelationId`, and the option to add replay/learning later without schema changes.
+
+---
+
+## Deployment: Docker Compose on TrueNAS
 
 ```mermaid
 graph TB
-    subgraph Host["User's Machine / VPS"]
+    subgraph TrueNAS["TrueNAS Server"]
         subgraph Docker["Docker Compose"]
-            APIc["dealme-api<br/><i>ASP.NET Core 9<br/>+ Hangfire + Playwright</i>"]
+            APIc["dealme-api<br/><i>ASP.NET Core 9<br/>+ Hangfire</i>"]
             Web["dealme-web<br/><i>React SPA + Nginx</i>"]
             CDIOc["changedetection.io<br/><i>:5000</i>"]
             Apprisec["Apprise<br/><i>:8000</i>"]
-            Wallosc["Wallos<br/><i>:8282</i>"]
-            N8Nc["n8n (optional)<br/><i>:5678</i>"]
-            SQLite[("SQLite (MVP)")]
-            Postgres[("PostgreSQL (Prod)")]
         end
-        subgraph Volumes["Docker Volumes"]
-            V1["db-data"]
+        subgraph Volumes["Persistent Volumes"]
+            V1["db-data<br/><i>SQLite file</i>"]
             V2["cdio-data"]
-            V3["wallos-data"]
-            V4["n8n-data"]
         end
     end
 
-    External["External Services<br/><i>RSS, Scrape targets,<br/>Up Bank API,<br/>Notification channels</i>"]
+    GitHub["GitHub<br/><i>main branch</i>"]
+    GHCR["GHCR<br/><i>Container images</i>"]
+    External["External Services"]
+    Devices["User Devices"]
+
+    GitHub -->|"Push to main"| GHCR
+    GHCR -->|"Watchtower pulls<br/>updated images"| Docker
 
     Web -->|":5001"| APIc
-    APIc --> SQLite
-    APIc -.-> Postgres
+    APIc -->|EF Core| V1
     APIc -->|":5000"| CDIOc
     APIc -->|":8000"| Apprisec
-    APIc -->|":8282"| Wallosc
-    APIc -->|":5678"| N8Nc
-    CDIOc -->|"Webhooks"| APIc
-
-    SQLite --> V1
+    CDIOc -->|Webhooks| APIc
     CDIOc --> V2
-    Wallosc --> V3
-    N8Nc --> V4
 
     APIc --> External
     CDIOc --> External
-    Apprisec --> External
+    Apprisec --> Devices
 
-    style Host fill:#f9f9f9,stroke:#ccc,color:#000
+    style TrueNAS fill:#f9f9f9,stroke:#ccc,color:#000
     style Docker fill:#f0f0f0,stroke:#bbb,color:#000
     style Volumes fill:#f5f5f5,stroke:#ccc,color:#000
     style APIc fill:#E3F2FD,stroke:#90CAF9,color:#000
     style Web fill:#E8F5E9,stroke:#A5D6A7,color:#000
     style CDIOc fill:#FFFDE7,stroke:#FFF59D,color:#000
     style Apprisec fill:#FFCDD2,stroke:#EF9A9A,color:#000
-    style Wallosc fill:#FFE0B2,stroke:#FFCC80,color:#000
-    style N8Nc fill:#EDE7F6,stroke:#B39DDB,color:#000
+    style GitHub fill:#999,stroke:#888,color:#fff
+    style GHCR fill:#999,stroke:#888,color:#fff
     style External fill:#999,stroke:#888,color:#fff
+    style Devices fill:#999,stroke:#888,color:#fff
 ```
 
-### Ports Summary
+### Auto-Deploy Flow
 
-| Container | Port | Protocol |
-|---|---|---|
-| dealme-api | 5001 | HTTP (REST API) |
-| dealme-web | 80/443 | HTTP/S (Nginx) |
-| changedetection.io | 5000 | HTTP (API + Webhooks) |
-| Apprise | 8000 | HTTP (Notification API) |
-| Wallos | 8282 | HTTP (Subscription API) |
-| n8n | 5678 | HTTP (Workflow API) |
+1. Push to `main` → GitHub Actions builds Docker images → pushes to GHCR
+2. Watchtower (running on TrueNAS) polls GHCR for updated images
+3. When new image detected → Watchtower pulls and restarts the container
+4. Zero manual intervention, zero hardcoding
+
+### Configuration
+
+All config via `.env` file (never committed):
+
+```env
+# Database
+DATABASE_PROVIDER=sqlite
+CONNECTION_STRING=Data Source=/data/dealme.db
+
+# Apprise
+APPRISE_URL=http://apprise:8000
+
+# changedetection.io
+CDIO_URL=http://cdio:5000
+CDIO_API_KEY=${CDIO_API_KEY}
+
+# Notification defaults
+DEFAULT_NOTIFICATION_CHANNEL=discord://webhook_id/webhook_token
+MIN_DEAL_VALUE=5.00
+TIMEZONE=Australia/Melbourne
+```

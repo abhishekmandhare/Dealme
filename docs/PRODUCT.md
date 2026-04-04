@@ -57,7 +57,7 @@ A unified, self-hosted platform that autonomously discovers, tracks, and optimis
 - Comfortable with technology (can run Docker, configure apps)
 - Wants to maximise earnings without a second job
 - Values time -- wants automation over manual effort
-- Already uses some combination of OzBargain, Cashrewards, Flybuys, etc.
+- Already uses some combination of OzBargain, TopCashback, Flybuys, etc.
 - Frustrated by managing 15+ apps/sites separately
 
 ### Secondary Persona: "The Set-and-Forget Saver"
@@ -167,7 +167,7 @@ Every feature is designed to reduce user effort. If the system can do it automat
 **Trigger:** Any opportunity from UC1/UC6/UC10 involving a purchase, OR user manually searches a retailer
 
 **Flow:**
-1. System continuously scrapes cashback rates from Cashrewards and ShopBack (background job)
+1. System continuously scrapes cashback rates from TopCashback and ShopBack (background job)
 2. System maintains a coupon database from RetailMeNot AU and OzBargain coupon section
 3. When any deal/price alert fires, the cashback route is **pre-computed and embedded in the notification**
 4. If user has entered their credit cards during setup (Tier 3, optional), card bonus is factored in
@@ -183,7 +183,7 @@ Every feature is designed to reduce user effort. If the system can do it automat
    → Effective price: $270.08  [Buy Now →]
 ```
 
-**Sources:** Cashrewards, ShopBack, RetailMeNot AU, OzBargain coupon section
+**Sources:** TopCashback, ShopBack, RetailMeNot AU, OzBargain coupon section
 **Integration Method:** Web scraping (rates change frequently)
 
 **Acceptance Criteria:**
@@ -219,7 +219,7 @@ Every feature is designed to reduce user effort. If the system can do it automat
 | Honeygain | Earnings (USD→AUD) | API/scrape dashboard | Tier 3: install once, then auto |
 | EarnApp | Earnings (USD→AUD) | API/scrape dashboard | Tier 3: install once, then auto |
 | Pawns.app | Earnings (USD→AUD) | API/scrape dashboard | Tier 3: install once, then auto |
-| Cashrewards | Pending cashback | Scrape account page | Tier 3: link once, then auto |
+| TopCashback | Pending cashback | Scrape account page | Tier 3: link once, then auto |
 | ShopBack | Pending cashback | Scrape account page | Tier 3: link once, then auto |
 | Google Opinion Rewards | Credits earned | Manual input (no API available) | Quick-entry prompt in digest |
 | Survey earnings | Per-platform totals | Manual input with quick-entry | Quick-entry prompt in digest |
@@ -472,7 +472,7 @@ Every feature is designed to reduce user effort. If the system can do it automat
 | Stake | Free stock (up to $150) | Brokerage |
 | SelfWealth | $10-20 credit | Brokerage |
 | Raiz | $5 | Investing |
-| Cashrewards | $10-20 | Cashback |
+| TopCashback | $10-20 | Cashback |
 | ShopBack | $5-10 | Cashback |
 | Uber/Uber Eats | $10-20 credit | Transport/Food |
 | DoorDash | $10-20 | Food delivery |
@@ -611,7 +611,7 @@ Every feature is designed to reduce user effort. If the system can do it automat
 |---|---|---|---|---|---|
 | 1 | OzBargain | Deals | RSS feeds | High (savings) | Low |
 | 2 | Cheapies | Deals | RSS feeds | Medium (savings) | Low |
-| 3 | Cashrewards | Cashback | Web scraping | $300-1,500 | Medium |
+| 3 | TopCashback | Cashback | Web scraping | $300-1,500 | Medium |
 | 4 | ShopBack | Cashback | Web scraping | $300-1,500 | Medium |
 | 5 | Point Hacks | Card bonuses | RSS + scraping | $1,000-3,000 | Medium |
 | 6 | Microsoft Rewards | Rewards | Playwright | $50-80 | Medium |
@@ -669,7 +669,7 @@ Standard output format:
 ```
 Opportunity
 ├── Id: guid
-├── Source: string               // "ozbargain", "cashrewards", etc.
+├── Source: string               // "ozbargain", "topcashback", etc.
 ├── Type: enum                   // Deal, Cashback, Bonus, Rebate, Earning
 ├── Title: string
 ├── Description: string
@@ -929,7 +929,7 @@ External Source → Adapter (fetch + normalise) → Core Engine (match + score +
 
 ### Phase 2: Cashback & Bonuses -- v0.2
 
-- Cashrewards adapter (scraping)
+- TopCashback adapter (scraping)
 - ShopBack adapter (scraping)
 - Cashback optimiser (UC2)
 - Point Hacks adapter (RSS + scraping)
@@ -1088,7 +1088,7 @@ CDR is Australia's government-mandated Open Banking framework:
 | Integration | ToS Risk | Notes |
 |---|---|---|
 | OzBargain RSS | **None** | RSS is intended for consumption |
-| Cashrewards scraping | **Low** | Reading public cashback rates |
+| TopCashback scraping | **Low** | Reading public cashback rates |
 | ShopBack scraping | **Low** | Reading public cashback rates |
 | Microsoft Rewards automation | **High** | Automation explicitly against ToS; account ban risk. User opt-in with warning |
 | Honeygain/EarnApp | **None** | Legitimate passive income; just tracking earnings |
