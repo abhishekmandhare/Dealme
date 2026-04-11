@@ -1,0 +1,13 @@
+2026/04/11-23:09:51.498 3ebec Reusing MANIFEST C:\code\net\DealMe\automation\browser-profile\Default\Session Storage/MANIFEST-000001
+2026/04/11-23:09:51.499 3ebec Recovering log #3
+2026/04/11-23:09:51.504 3ebec Level-0 table #3: started
+2026/04/11-23:09:51.514 3ebec Level-0 table #3: 1177722 bytes OK
+2026/04/11-23:09:51.514 3ebec Recovering log #4
+2026/04/11-23:09:51.515 3ebec Reusing old log C:\code\net\DealMe\automation\browser-profile\Default\Session Storage/000004.log 
+2026/04/11-23:09:51.516 3ebec Delete type=0 #3
+2026/04/11-23:09:51.516 3ebec Delete type=2 #5
+2026/04/11-23:15:21.019 3e760 Level-0 table #6: started
+2026/04/11-23:15:21.041 3e760 Level-0 table #6: 2562840 bytes OK
+2026/04/11-23:15:21.043 3e760 Delete type=0 #4
+2026/04/11-23:15:24.502 3e760 Level-0 table #8: started
+2026/04/11-23:15:24.506 3e760 Level-0 table #8: 281983 bytes OK

@@ -14,6 +14,7 @@ services:
       - MIN_DEAL_VALUE=${MIN_DEAL_VALUE:-5.00}
       - TIMEZONE=${TIMEZONE:-Australia/Melbourne}
       - SERPER_API_KEY=${SERPER_API_KEY:-}
+      - AUTOMATION_URL=http://automation:3100
     volumes:
       - db-data:/data
     depends_on:
@@ -47,6 +48,22 @@ services:
     ports:
       - "8000:8000"
 
+  automation:
+    build:
+      context: ../automation
+      dockerfile: Dockerfile
+    container_name: dealme-automation
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - automation-data:/data
+    environment:
+      - SEARCH_COUNT=${SEARCH_COUNT:-33}
+      - MIN_DELAY=${MIN_DELAY:-8000}
+      - MAX_DELAY=${MAX_DELAY:-20000}
+
 volumes:
   db-data:
   cdio-data:
+  automation-data:

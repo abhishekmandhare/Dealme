@@ -70,5 +70,10 @@ RecurringJob.AddOrUpdate<PriceWatchPollingJob>(
     job => job.RunAsync(CancellationToken.None),
     "0 * * * *"); // every hour
 
+RecurringJob.AddOrUpdate<AutomationJob>(
+    "bing-searches",
+    job => job.RunBingSearchesAsync(CancellationToken.None),
+    "0 21 * * *"); // 21:00 UTC = 7:00 AM AEST
+
 app.MapControllers();
 app.Run();

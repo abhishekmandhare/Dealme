@@ -17,6 +17,59 @@ namespace DealMe.Infrastructure.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.14");
 
+            modelBuilder.Entity("DealMe.Core.Domain.Entities.AutomationRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CompletedAt")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ItemsCompleted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ItemsTotal")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LogOutput")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PointsAfter")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("PointsBefore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StartedAt")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Task")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Provider", "StartedAt")
+                        .HasDatabaseName("IX_AutoRun_Provider_Started");
+
+                    b.ToTable("AutomationRuns");
+                });
+
             modelBuilder.Entity("DealMe.Core.Domain.Entities.DomainEvent", b =>
                 {
                     b.Property<Guid>("Id")

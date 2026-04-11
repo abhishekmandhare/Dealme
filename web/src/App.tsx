@@ -2,14 +2,16 @@ import { useState } from 'react'
 import type { JSX } from 'react'
 import OpportunitiesPage from './pages/OpportunitiesPage'
 import PriceWatchesPage from './pages/PriceWatchesPage'
+import RewardsPage from './pages/RewardsPage'
 import SettingsPage from './pages/SettingsPage'
 import { useTheme, type Theme } from './hooks/useTheme'
 
-type Page = 'opportunities' | 'price-watches' | 'settings'
+type Page = 'opportunities' | 'price-watches' | 'rewards' | 'settings'
 
 const pages: { id: Page; label: string }[] = [
   { id: 'opportunities', label: 'Opportunities' },
   { id: 'price-watches', label: 'Price Watches' },
+  { id: 'rewards', label: 'Rewards' },
   { id: 'settings', label: 'Settings' },
 ]
 
@@ -97,6 +99,7 @@ export default function App() {
       <main>
         {page === 'opportunities' && <OpportunitiesPage />}
         {page === 'price-watches' && <PriceWatchesPage />}
+        {page === 'rewards' && <RewardsPage />}
         {page === 'settings' && <SettingsPage />}
       </main>
     </>

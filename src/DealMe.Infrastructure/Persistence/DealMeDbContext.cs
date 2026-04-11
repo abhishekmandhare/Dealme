@@ -27,6 +27,7 @@ public class DealMeDbContext : DbContext
     public DbSet<PriceWatch> PriceWatches => Set<PriceWatch>();
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
     public DbSet<NotificationChannel> NotificationChannels => Set<NotificationChannel>();
+    public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -92,6 +93,15 @@ public class DealMeDbContext : DbContext
             e.Property(x => x.Type).HasMaxLength(50).IsRequired();
             e.Property(x => x.Name).HasMaxLength(100).IsRequired();
             e.Property(x => x.AppriseUrl).HasMaxLength(500).IsRequired();
+        });
+
+        mb.Entity<AutomationRun>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Provider).HasMaxLength(50).IsRequired();
+            e.Property(x => x.Task).HasMaxLength(50).IsRequired();
+            e.HasIndex(x => new { x.Provider, x.StartedAt })
+             .HasDatabaseName("IX_AutoRun_Provider_Started");
         });
     }
 }

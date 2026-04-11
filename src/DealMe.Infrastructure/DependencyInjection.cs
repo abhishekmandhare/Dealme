@@ -63,6 +63,8 @@ public static class DependencyInjection
 
         services.AddScoped<Jobs.AdapterPollingJob>();
         services.AddScoped<Jobs.PriceWatchPollingJob>();
+        services.AddScoped<Jobs.AutomationJob>();
+        services.AddHttpClient("automation");
 
         services.AddHangfire(hf => hf.UseInMemoryStorage());
         services.AddHangfireServer();
