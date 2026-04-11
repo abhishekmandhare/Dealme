@@ -63,7 +63,9 @@ jobs:
       - name: Connect to Tailscale
         uses: tailscale/github-action@v3
         with:
-          authkey: ${{ secrets.TS_AUTHKEY }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
 
       - name: Wait for Tailscale
         run: |
@@ -88,6 +90,8 @@ jobs:
 
           ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
             truenas_admin@${{ secrets.TRUENAS_HOST }} \
-            "sudo midclt call app.redeploy 'dealme'"
+            "sudo docker pull ${{ env.WEB_IMAGE }}:latest && \
+             sudo docker pull ${{ env.API_IMAGE }}:latest && \
+             sudo midclt call app.redeploy 'dealme'"
 
-          echo "Deploy triggered. TrueNAS will pull latest images and restart the app."
+          echo "Deploy triggered. Images pulled and app redeployed."

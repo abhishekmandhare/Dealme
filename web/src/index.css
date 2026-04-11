@@ -449,6 +449,21 @@ input[type="number"]:focus {
   font-size: 1.1rem;
 }
 
+.field-hint {
+  font-size: 0.78rem;
+  color: var(--accent-hover);
+  background: rgba(99, 102, 241, 0.08);
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin: -4px 0 4px;
+}
+
+.field-optional {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 /* ── Channel list ── */
 .channel-list {
   display: flex;
