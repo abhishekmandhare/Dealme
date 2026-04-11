@@ -77,6 +77,14 @@ jobs:
             echo "Waiting for Tailscale connectivity... ($i/30)"
             sleep 2
           done
+          echo "--- Tailscale status ---"
+          tailscale status
+          echo "--- Tailscale netcheck ---"
+          tailscale netcheck 2>&1 || true
+          echo "--- TCP test port 22 ---"
+          nc -zv -w5 ${{ secrets.TRUENAS_HOST }} 22 2>&1 || echo "nc failed"
+          echo "--- curl test ---"
+          curl -sk --connect-timeout 5 https://${{ secrets.TRUENAS_HOST }} 2>&1 | head -5 || echo "curl failed"
 
       - name: Deploy to TrueNAS
         env:
@@ -87,7 +95,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H ${{ secrets.TRUENAS_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
 
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+          ssh -v -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
             truenas_admin@${{ secrets.TRUENAS_HOST }} \
             "sudo midclt call app.redeploy 'dealme'"
 
