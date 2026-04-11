@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { JSX } from 'react'
 import OpportunitiesPage from './pages/OpportunitiesPage'
 import PriceWatchesPage from './pages/PriceWatchesPage'
 import SettingsPage from './pages/SettingsPage'
