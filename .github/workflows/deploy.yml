@@ -67,6 +67,17 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
 
+      - name: Wait for Tailscale
+        run: |
+          for i in $(seq 1 30); do
+            if tailscale ping --timeout=2s ${{ secrets.TRUENAS_HOST }} >/dev/null 2>&1; then
+              echo "Tailscale connected to TrueNAS"
+              break
+            fi
+            echo "Waiting for Tailscale connectivity... ($i/30)"
+            sleep 2
+          done
+
       - name: Deploy to TrueNAS
         env:
           TRUENAS_SSH_KEY: ${{ secrets.TRUENAS_SSH_KEY }}
@@ -74,9 +85,10 @@ jobs:
           mkdir -p ~/.ssh
           echo "$TRUENAS_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ secrets.TRUENAS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H ${{ secrets.TRUENAS_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
 
-          ssh -o StrictHostKeyChecking=no truenas_admin@${{ secrets.TRUENAS_HOST }} \
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+            truenas_admin@${{ secrets.TRUENAS_HOST }} \
             "sudo midclt call app.redeploy 'dealme'"
 
           echo "Deploy triggered. TrueNAS will pull latest images and restart the app."
