@@ -8,7 +8,7 @@ const TYPE_TABS: { type: OpportunityType | 'All'; label: string }[] = [
   { type: 'All',        label: 'All' },
   { type: 'Deal',       label: 'Deals' },
   { type: 'Cashback',   label: 'Cashback' },
-  { type: 'Bonus',      label: 'Bonus' },
+  { type: 'Bonus',      label: 'Credit Card' },
   { type: 'Rebate',     label: 'Rebates' },
   { type: 'PriceAlert', label: 'Price Alerts' },
 ]
