@@ -11,6 +11,7 @@ const TAG_MAP: Record<string, string> = {
   electronics: 'Electronics', tv: 'Electronics', audio: 'Electronics',
   cameras: 'Electronics', 'home theatre': 'Electronics', headphones: 'Electronics',
   smartwatches: 'Electronics', wearables: 'Electronics',
+  'electrical & electronics': 'Electronics',
 
   // Phones & Tablets
   mobile: 'Phones & Tablets', phones: 'Phones & Tablets', tablets: 'Phones & Tablets',
@@ -19,6 +20,7 @@ const TAG_MAP: Record<string, string> = {
   // Gaming
   gaming: 'Gaming', consoles: 'Gaming', games: 'Gaming',
   'video games': 'Gaming', playstation: 'Gaming', xbox: 'Gaming', nintendo: 'Gaming',
+  'video game': 'Gaming',
 
   // Travel
   travel: 'Travel', flights: 'Travel', hotels: 'Travel',
@@ -27,7 +29,8 @@ const TAG_MAP: Record<string, string> = {
   // Food & Drink
   food: 'Food & Drink', groceries: 'Food & Drink', dining: 'Food & Drink',
   restaurants: 'Food & Drink', 'food & drink': 'Food & Drink', alcohol: 'Food & Drink',
-  coffee: 'Food & Drink',
+  coffee: 'Food & Drink', 'dining & takeaway': 'Food & Drink', takeaway: 'Food & Drink',
+  snack: 'Food & Drink', 'snacks': 'Food & Drink',
 
   // Clothing & Fashion
   clothing: 'Clothing', fashion: 'Clothing', shoes: 'Clothing',
@@ -56,6 +59,19 @@ const TAG_MAP: Record<string, string> = {
 
   // Toys & Kids
   toys: 'Toys & Kids', kids: 'Toys & Kids', baby: 'Toys & Kids', children: 'Toys & Kids',
+  'toys & kids': 'Toys & Kids', lego: 'Toys & Kids', 'building blocks': 'Toys & Kids',
+
+  // Internet & Telco
+  internet: 'Internet & Telco', broadband: 'Internet & Telco', nbn: 'Internet & Telco',
+  telco: 'Internet & Telco', 'mobile plan': 'Internet & Telco', sim: 'Internet & Telco',
+
+  // Financial / Credit Cards
+  cashback: 'Financial', 'credit card': 'Financial', 'credit cards': 'Financial',
+  banking: 'Financial', insurance: 'Financial', finance: 'Financial',
+  'earning points': 'Financial', 'points': 'Financial', rewards: 'Financial',
+
+  // Pets
+  pets: 'Pets', 'pet food': 'Pets', dog: 'Pets', cat: 'Pets',
 
   // Deals / Freebies (meta)
   freebies: 'Freebies', free: 'Freebies',

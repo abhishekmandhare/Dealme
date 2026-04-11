@@ -236,7 +236,10 @@ export default function OpportunitiesPage() {
                 <div className="opp-main">
                   <a href={o.url} target="_blank" rel="noreferrer">{o.title}</a>
                   <DealPricing o={o} />
-                  <small>{o.source} · {o.status}</small>
+                  <div className="opp-meta">
+                    <span className="opp-category-tag">{getCategory(o.tags)}</span>
+                    <small>{o.source} · {o.status}</small>
+                  </div>
                 </div>
                 <OpportunityActions o={o} onStatusChange={handleStatusChange} />
               </li>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api/client'
 import { useFetch } from '../hooks/useFetch'
+import { useTheme, type Theme } from '../hooks/useTheme'
 import type { UserPreferences } from '../types/preferences'
 import type { NotificationChannel } from '../types/channel'
 import type { AdapterStatus } from '../types/adapter'
@@ -49,6 +50,38 @@ function PreferencesSection() {
           <button className="primary" onClick={save}>Save</button>
           {saved && <span className="saved-badge">Saved!</span>}
         </div>
+      </div>
+    </section>
+  )
+}
+
+// ── Appearance section ────────────────────────────────────────────────────
+
+const THEME_OPTIONS: { value: Theme; label: string }[] = [
+  { value: 'light',  label: 'Light' },
+  { value: 'dark',   label: 'Dark' },
+  { value: 'system', label: 'System' },
+]
+
+function AppearanceSection() {
+  const { theme, setTheme } = useTheme()
+
+  return (
+    <section className="settings-section">
+      <h2>Appearance</h2>
+      <div className="theme-picker">
+        {THEME_OPTIONS.map(t => (
+          <button
+            key={t.value}
+            className={`theme-option ${theme === t.value ? 'active' : ''}`}
+            onClick={() => setTheme(t.value)}
+          >
+            <span className="theme-option-icon">
+              {t.value === 'light' ? '\u2600' : t.value === 'dark' ? '\u263E' : '\uD83D\uDCBB'}
+            </span>
+            {t.label}
+          </button>
+        ))}
       </div>
     </section>
   )
@@ -240,6 +273,7 @@ export default function SettingsPage() {
   return (
     <div>
       <h1>Settings</h1>
+      <AppearanceSection />
       <PreferencesSection />
       <ChannelsSection />
       <AdaptersSection />

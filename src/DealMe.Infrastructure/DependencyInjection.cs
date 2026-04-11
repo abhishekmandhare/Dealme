@@ -43,10 +43,14 @@ public static class DependencyInjection
             new FrugalFeedsAdapter(sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(FrugalFeedsAdapter)),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<FrugalFeedsAdapter>>()));
         services.AddSingleton<ChangeDetectionAdapter>();
+        services.AddSingleton<PointHacksAdapter>(sp =>
+            new PointHacksAdapter(sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(PointHacksAdapter)),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PointHacksAdapter>>()));
         services.AddSingleton<IIntegrationAdapter>(sp => sp.GetRequiredService<OzBargainAdapter>());
         services.AddSingleton<IIntegrationAdapter>(sp => sp.GetRequiredService<CheapiesAdapter>());
         services.AddSingleton<IIntegrationAdapter>(sp => sp.GetRequiredService<FrugalFeedsAdapter>());
         services.AddSingleton<IIntegrationAdapter>(sp => sp.GetRequiredService<ChangeDetectionAdapter>());
+        services.AddSingleton<IIntegrationAdapter>(sp => sp.GetRequiredService<PointHacksAdapter>());
 
         services.AddScoped<IPipelineService, PipelineService>();
         services.AddHttpClient<AppriseClient>();
