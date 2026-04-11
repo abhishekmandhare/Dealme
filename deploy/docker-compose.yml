@@ -1,0 +1,52 @@
+services:
+  dealme-api:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/dealme-api:latest
+    container_name: dealme-api
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - DATABASE_PROVIDER=${DATABASE_PROVIDER:-sqlite}
+      - CONNECTION_STRING=${CONNECTION_STRING:-Data Source=/data/dealme.db}
+      - APPRISE_URL=http://apprise:8000
+      - CDIO_URL=http://changedetection:5000
+      - CDIO_API_KEY=${CDIO_API_KEY}
+      - MIN_DEAL_VALUE=${MIN_DEAL_VALUE:-5.00}
+      - TIMEZONE=${TIMEZONE:-Australia/Melbourne}
+      - SERPER_API_KEY=${SERPER_API_KEY:-}
+    volumes:
+      - db-data:/data
+    depends_on:
+      - apprise
+      - changedetection
+
+  dealme-web:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/dealme-web:latest
+    container_name: dealme-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - dealme-api
+
+  changedetection:
+    image: ghcr.io/dgtlmoon/changedetection.io:latest
+    container_name: changedetection
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - cdio-data:/datastore
+    environment:
+      - BASE_URL=${CDIO_BASE_URL:-http://changedetection:5000}
+
+  apprise:
+    image: caronc/apprise:latest
+    container_name: apprise
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+
+volumes:
+  db-data:
+  cdio-data:

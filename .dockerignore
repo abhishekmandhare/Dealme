@@ -1,0 +1,9 @@
+**/.git
+**/obj
+**/bin
+web/node_modules
+web/dist
+docs
+deploy/.env
+.github
+*.md

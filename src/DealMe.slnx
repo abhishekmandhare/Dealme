@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="DealMe.Api/DealMe.Api.csproj" />
+  <Project Path="DealMe.Core/DealMe.Core.csproj" />
+  <Project Path="DealMe.Infrastructure/DealMe.Infrastructure.csproj" />
+</Solution>

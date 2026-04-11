@@ -1,0 +1,13 @@
+# Local dev: build images from source instead of pulling from GHCR
+services:
+  dealme-api:
+    build:
+      context: ../src
+      dockerfile: DealMe.Api/Dockerfile
+    image: dealme-api:local
+
+  dealme-web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    image: dealme-web:local

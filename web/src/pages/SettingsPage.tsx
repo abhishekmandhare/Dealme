@@ -1,0 +1,248 @@
+import { useState } from 'react'
+import { api } from '../api/client'
+import { useFetch } from '../hooks/useFetch'
+import type { UserPreferences } from '../types/preferences'
+import type { NotificationChannel } from '../types/channel'
+import type { AdapterStatus } from '../types/adapter'
+
+// ── Preferences section ────────────────────────────────────────────────────
+
+function PreferencesSection() {
+  const { data: fetched, loading, error } = useFetch<UserPreferences>('/settings/preferences')
+  const [prefs, setPrefs] = useState<UserPreferences | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const effective = prefs ?? fetched
+
+  const save = async () => {
+    if (!effective) return
+    await api.put<UserPreferences>('/settings/preferences', effective)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  if (loading) return <p className="loading">Loading...</p>
+  if (error) return <p className="error">{error}</p>
+  if (!effective) return null
+
+  return (
+    <section className="settings-section">
+      <h2>Preferences</h2>
+      <div className="settings-form">
+        <label>
+          Min Deal Value ($)
+          <input
+            type="number"
+            value={effective.minDealValue}
+            onChange={e => setPrefs({ ...effective, minDealValue: Number(e.target.value) })}
+          />
+        </label>
+        <label>
+          Timezone
+          <input
+            type="text"
+            value={effective.timezone}
+            onChange={e => setPrefs({ ...effective, timezone: e.target.value })}
+          />
+        </label>
+        <div>
+          <button className="primary" onClick={save}>Save</button>
+          {saved && <span className="saved-badge">Saved!</span>}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── Channels section ───────────────────────────────────────────────────────
+
+const CHANNEL_TYPES = ['discord', 'telegram', 'slack', 'email', 'ntfy', 'pushover', 'gotify', 'other']
+
+const APPRISE_HINTS: Record<string, string> = {
+  discord:  'discord://webhook_id/webhook_token',
+  telegram: 'tgram://bot_token/chat_id',
+  slack:    'slack://token_a/token_b/token_c',
+  email:    'mailto://user:password@gmail.com',
+  ntfy:     'ntfy://ntfy.sh/topic',
+  pushover: 'pover://user_key@app_token',
+  gotify:   'gotify://hostname/app_token',
+  other:    'schema://...',
+}
+
+function ChannelsSection() {
+  const { data: channels, loading, error } = useFetch<NotificationChannel[]>('/settings/channels')
+  const [list, setList] = useState<NotificationChannel[] | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState({ type: 'discord', name: '', appriseUrl: '' })
+  const [formError, setFormError] = useState<string | null>(null)
+
+  const effective = list ?? channels ?? []
+
+  const add = async () => {
+    setFormError(null)
+    if (!form.name.trim()) { setFormError('Name is required'); return }
+    if (!form.appriseUrl.trim()) { setFormError('Apprise URL is required'); return }
+    try {
+      const created = await api.post<NotificationChannel>('/settings/channels', {
+        type: form.type,
+        name: form.name.trim(),
+        appriseUrl: form.appriseUrl.trim(),
+        isEnabled: true,
+      })
+      setList([...effective, created])
+      setForm({ type: 'discord', name: '', appriseUrl: '' })
+      setAdding(false)
+    } catch (e) {
+      setFormError(String(e))
+    }
+  }
+
+  const remove = async (id: string) => {
+    await api.delete(`/settings/channels/${id}`)
+    setList(effective.filter(c => c.id !== id))
+  }
+
+  if (loading) return <p className="loading">Loading...</p>
+  if (error) return <p className="error">{error}</p>
+
+  return (
+    <section className="settings-section">
+      <h2>Notification Channels</h2>
+      <p className="section-hint">
+        Channels are delivered via <strong>Apprise</strong>. Use the URL format for your service.
+      </p>
+
+      {effective.length === 0 && !adding && (
+        <p className="empty">No channels configured. Add one to start receiving notifications.</p>
+      )}
+
+      {effective.length > 0 && (
+        <ul className="channel-list">
+          {effective.map(c => (
+            <li key={c.id} className="channel-item">
+              <div className="channel-info">
+                <span className="channel-type">{c.type}</span>
+                <span className="channel-name">{c.name}</span>
+                <span className="channel-url">{c.appriseUrl}</span>
+              </div>
+              <button className="btn-danger" onClick={() => remove(c.id)}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {adding ? (
+        <div className="channel-form">
+          <div className="channel-form-row">
+            <label>
+              Type
+              <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value, appriseUrl: '' })}>
+                {CHANNEL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+            <label>
+              Name
+              <input
+                type="text"
+                placeholder="e.g. My Discord"
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+              />
+            </label>
+          </div>
+          <label>
+            Apprise URL
+            <input
+              type="text"
+              placeholder={APPRISE_HINTS[form.type]}
+              value={form.appriseUrl}
+              onChange={e => setForm({ ...form, appriseUrl: e.target.value })}
+            />
+          </label>
+          {formError && <p className="error">{formError}</p>}
+          <div className="form-actions">
+            <button className="primary" onClick={add}>Add Channel</button>
+            <button className="btn-secondary" onClick={() => { setAdding(false); setFormError(null) }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button className="primary" onClick={() => setAdding(true)}>+ Add Channel</button>
+      )}
+    </section>
+  )
+}
+
+// ── Adapters section ───────────────────────────────────────────────────────
+
+function formatRelative(iso: string | null): string {
+  if (!iso) return 'Never'
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (diff < 60)  return `${diff}s ago`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  return `${Math.floor(diff / 3600)}h ago`
+}
+
+function AdaptersSection() {
+  const { data: initial, loading, error } = useFetch<AdapterStatus[]>('/adapters/status')
+  const [list, setList] = useState<AdapterStatus[] | null>(null)
+  const [running, setRunning] = useState<string | null>(null)
+
+  const adapters = list ?? initial ?? []
+
+  const run = async (name: string) => {
+    setRunning(name)
+    try {
+      const updated = await api.post<AdapterStatus>(`/adapters/${name}/run`, {})
+      setList(adapters.map(a => a.adapterName === name ? updated : a))
+    } finally {
+      setRunning(null)
+    }
+  }
+
+  if (loading) return <p className="loading">Loading...</p>
+  if (error)   return <p className="error">{error}</p>
+
+  return (
+    <section className="settings-section">
+      <h2>Adapter Status</h2>
+      <ul className="adapter-list">
+        {adapters.map(a => (
+          <li key={a.adapterName} className="adapter-item">
+            <div className={`adapter-dot ${a.isHealthy ? 'healthy' : 'unhealthy'}`} />
+            <div className="adapter-info">
+              <span className="adapter-name">{a.adapterName}</span>
+              <span className="adapter-meta">
+                Last run: {formatRelative(a.lastRunAt)}
+                {a.lastRunAt && ` · ${a.itemsLastRun} items`}
+              </span>
+              {a.lastError && <span className="adapter-error">{a.lastError}</span>}
+            </div>
+            <button
+              className="action-btn action-save"
+              onClick={() => run(a.adapterName)}
+              disabled={running !== null}
+            >
+              {running === a.adapterName ? 'Running...' : 'Run'}
+            </button>
+            <span className={`adapter-badge ${a.isHealthy ? 'badge-ok' : 'badge-err'}`}>
+              {a.isHealthy ? 'OK' : 'Error'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────
+
+export default function SettingsPage() {
+  return (
+    <div>
+      <h1>Settings</h1>
+      <PreferencesSection />
+      <ChannelsSection />
+      <AdaptersSection />
+    </div>
+  )
+}
