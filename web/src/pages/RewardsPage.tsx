@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api/client'
 import { useFetch } from '../hooks/useFetch'
-import type { AutomationProvider, AutomationRun, AutomationStats } from '../types/automation'
+import type { AutomationProvider, AutomationRun, AutomationStats, AutomationConfig } from '../types/automation'
 
 function formatTime(iso: string): string {
   const d = new Date(iso)
@@ -20,6 +20,246 @@ function formatDuration(start: string, end: string): string {
   const secs = Math.floor((new Date(end).getTime() - new Date(start).getTime()) / 1000)
   if (secs < 60) return `${secs}s`
   return `${Math.floor(secs / 60)}m ${secs % 60}s`
+}
+
+/** Convert cron "M H * * *" (UTC) → AEST time string "HH:MM" for a time input */
+function cronToAestTime(cron: string): string {
+  const parts = cron.split(' ')
+  if (parts.length === 5 && parts[2] === '*' && parts[3] === '*' && parts[4] === '*') {
+    const min = parseInt(parts[0], 10)
+    const hourUtc = parseInt(parts[1], 10)
+    if (!isNaN(min) && !isNaN(hourUtc)) {
+      const hourAest = (hourUtc + 10) % 24
+      return `${String(hourAest).padStart(2, '0')}:${String(min).padStart(2, '0')}`
+    }
+  }
+  return ''
+}
+
+/** Convert AEST time "HH:MM" → cron string (UTC) */
+function aestTimeToCron(time: string): string {
+  const [h, m] = time.split(':').map(Number)
+  const hourUtc = (h - 10 + 24) % 24
+  return `${m} ${hourUtc} * * *`
+}
+
+function isSimpleDailyCron(cron: string): boolean {
+  const parts = cron.split(' ')
+  return parts.length === 5 && parts[2] === '*' && parts[3] === '*' && parts[4] === '*'
+}
+
+// ── Config edit section ────────────────────────────────────────────────────
+
+function ConfigSection({ providerId }: { providerId: string }) {
+  const { data: config, loading, error, refetch } = useFetch<AutomationConfig>(
+    `/automation/providers/${providerId}/config`
+  )
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  // Edit form state
+  const [label, setLabel] = useState('')
+  const [aestTime, setAestTime] = useState('07:00')
+  const [searchCount, setSearchCount] = useState(33)
+  const [mobileSearchCount, setMobileSearchCount] = useState(20)
+  const [minDelay, setMinDelay] = useState(8000)
+  const [maxDelay, setMaxDelay] = useState(20000)
+  const [enabled, setEnabled] = useState(true)
+  const [useCustomCron, setUseCustomCron] = useState(false)
+  const [customCron, setCustomCron] = useState('')
+
+  const openEdit = () => {
+    if (!config) return
+    setLabel(config.accountLabel ?? '')
+    const simple = isSimpleDailyCron(config.cronSchedule)
+    setUseCustomCron(!simple)
+    setAestTime(simple ? cronToAestTime(config.cronSchedule) : '07:00')
+    setCustomCron(config.cronSchedule)
+    setSearchCount(config.searchCount)
+    setMobileSearchCount(config.mobileSearchCount)
+    setMinDelay(config.minDelayMs)
+    setMaxDelay(config.maxDelayMs)
+    setEnabled(config.enabled)
+    setSaveError(null)
+    setEditing(true)
+  }
+
+  const save = async () => {
+    if (!config) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const cron = useCustomCron ? customCron : aestTimeToCron(aestTime)
+      await api.put<AutomationConfig>(`/automation/providers/${providerId}/config`, {
+        providerId,
+        accountLabel: label || null,
+        cronSchedule: cron,
+        searchCount,
+        mobileSearchCount,
+        minDelayMs: minDelay,
+        maxDelayMs: maxDelay,
+        enabled,
+      })
+      refetch?.()
+      setEditing(false)
+    } catch (e) {
+      setSaveError(String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <div className="rw-config-section"><p className="loading">Loading config...</p></div>
+  if (error) return null
+
+  return (
+    <div className="rw-config-section">
+      <div className="rw-config-header">
+        <h3>Account Settings</h3>
+        {!editing && (
+          <button className="rw-config-edit-btn" onClick={openEdit}>Edit</button>
+        )}
+      </div>
+
+      {!editing ? (
+        <div className="rw-config-fields">
+          <div className="rw-config-field">
+            <span className="rw-config-label">Account</span>
+            <span className="rw-config-value">{config?.accountLabel || <em>No label set</em>}</span>
+          </div>
+          <div className="rw-config-field">
+            <span className="rw-config-label">Schedule</span>
+            <span className="rw-config-value">
+              {config && isSimpleDailyCron(config.cronSchedule)
+                ? `Daily at ${cronToAestTime(config.cronSchedule)} AEST`
+                : config?.cronSchedule}
+              {config && !config.enabled && <span className="rw-config-disabled"> (disabled)</span>}
+            </span>
+          </div>
+          <div className="rw-config-field">
+            <span className="rw-config-label">Desktop searches</span>
+            <span className="rw-config-value">{config?.searchCount}/day</span>
+          </div>
+          <div className="rw-config-field">
+            <span className="rw-config-label">Mobile searches</span>
+            <span className="rw-config-value">{config?.mobileSearchCount}/day</span>
+          </div>
+          <div className="rw-config-field">
+            <span className="rw-config-label">Delay between searches</span>
+            <span className="rw-config-value">
+              {config ? `${config.minDelayMs / 1000}s – ${config.maxDelayMs / 1000}s` : '—'}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="rw-config-form">
+          <label>
+            Account label
+            <input
+              type="text"
+              value={label}
+              onChange={e => setLabel(e.target.value)}
+              placeholder="e.g. John's account"
+            />
+          </label>
+
+          <label>
+            <div className="rw-config-schedule-header">
+              Daily run time (AEST)
+              <button
+                type="button"
+                className="rw-config-cron-toggle"
+                onClick={() => setUseCustomCron(v => !v)}
+              >
+                {useCustomCron ? 'Use time picker' : 'Use cron'}
+              </button>
+            </div>
+            {useCustomCron ? (
+              <input
+                type="text"
+                value={customCron}
+                onChange={e => setCustomCron(e.target.value)}
+                placeholder="0 21 * * *  (UTC)"
+              />
+            ) : (
+              <input
+                type="time"
+                value={aestTime}
+                onChange={e => setAestTime(e.target.value)}
+              />
+            )}
+          </label>
+
+          <div className="rw-config-delay-row">
+            <label>
+              Desktop searches/day
+              <input
+                type="number"
+                min={1}
+                max={33}
+                value={searchCount}
+                onChange={e => setSearchCount(parseInt(e.target.value, 10))}
+              />
+            </label>
+            <label>
+              Mobile searches/day
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={mobileSearchCount}
+                onChange={e => setMobileSearchCount(parseInt(e.target.value, 10))}
+              />
+            </label>
+          </div>
+
+          <div className="rw-config-delay-row">
+            <label>
+              Min delay (ms)
+              <input
+                type="number"
+                min={1000}
+                step={500}
+                value={minDelay}
+                onChange={e => setMinDelay(parseInt(e.target.value, 10))}
+              />
+            </label>
+            <label>
+              Max delay (ms)
+              <input
+                type="number"
+                min={1000}
+                step={500}
+                value={maxDelay}
+                onChange={e => setMaxDelay(parseInt(e.target.value, 10))}
+              />
+            </label>
+          </div>
+
+          <label className="rw-config-enabled-row">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={e => setEnabled(e.target.checked)}
+            />
+            Enable scheduled runs
+          </label>
+
+          {saveError && <p className="error">{saveError}</p>}
+
+          <div className="rw-config-actions">
+            <button className="primary" onClick={save} disabled={saving}>
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button onClick={() => setEditing(false)} disabled={saving}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── Provider list ─────────────────────────────────────────────────────────
@@ -68,7 +308,9 @@ function ProviderCard({ provider, onClick }: { provider: AutomationProvider; onC
 
 function ProviderDetail({ provider, onBack }: { provider: AutomationProvider; onBack: () => void }) {
   const { data: stats } = useFetch<AutomationStats>(`/automation/providers/${provider.id}/stats`)
-  const { data: history } = useFetch<AutomationRun[]>(`/automation/providers/${provider.id}/history?limit=20`)
+  const { data: history, refetch: refetchHistory } = useFetch<AutomationRun[]>(
+    `/automation/providers/${provider.id}/history?limit=20`
+  )
   const [running, setRunning] = useState(false)
   const [lastResult, setLastResult] = useState<AutomationRun | null>(null)
 
@@ -77,6 +319,7 @@ function ProviderDetail({ provider, onBack }: { provider: AutomationProvider; on
     try {
       const result = await api.post<AutomationRun>(`/automation/providers/${provider.id}/run/${taskId}`, {})
       setLastResult(result)
+      refetchHistory?.()
     } catch (e) {
       setLastResult({ success: false, error: String(e) } as AutomationRun)
     } finally {
@@ -119,7 +362,7 @@ function ProviderDetail({ provider, onBack }: { provider: AutomationProvider; on
         </div>
       )}
 
-      {/* Tasks */}
+      {/* Tasks with Run Now */}
       <h3>Tasks</h3>
       <ul className="rw-task-list">
         {provider.tasks.map(t => (
@@ -152,6 +395,9 @@ function ProviderDetail({ provider, onBack }: { provider: AutomationProvider; on
           }
         </div>
       )}
+
+      {/* Account settings (editable config) */}
+      <ConfigSection providerId={provider.id} />
 
       {/* Login info */}
       {provider.loginRequired && (
@@ -234,7 +480,6 @@ export default function RewardsPage() {
         </ul>
       )}
 
-      {/* Future providers placeholder */}
       <div className="rw-coming-soon">
         <h3>Coming Soon</h3>
         <ul className="rw-future-list">

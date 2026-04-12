@@ -25,14 +25,32 @@ public sealed class AutomationJob
         _logger = logger;
     }
 
-    public async Task RunBingSearchesAsync(CancellationToken ct = default)
+    public Task RunBingSearchesAsync(CancellationToken ct = default)
+        => RunTaskAsync("bing-searches", "/run/bing-searches", useDesktop: true, ct);
+
+    public Task RunBingMobileSearchesAsync(CancellationToken ct = default)
+        => RunTaskAsync("bing-searches-mobile", "/run/bing-searches-mobile", useDesktop: false, ct);
+
+    private async Task RunTaskAsync(string task, string endpoint, bool useDesktop, CancellationToken ct)
     {
-        _logger.LogInformation("AutomationJob: starting Bing searches");
+        _logger.LogInformation("AutomationJob: starting {Task}", task);
         var startedAt = DateTimeOffset.UtcNow;
+
+        var config = await _db.AutomationProviderConfigs.FindAsync(["microsoft-rewards"], ct)
+            ?? new AutomationProviderConfig { ProviderId = "microsoft-rewards" };
+
+        var searchCount = useDesktop ? config.SearchCount : config.MobileSearchCount;
 
         try
         {
-            var resp = await _http.PostAsync($"{_automationUrl}/run/bing-searches", null, ct);
+            var payload = JsonSerializer.Serialize(new
+            {
+                searchCount,
+                minDelay = config.MinDelayMs,
+                maxDelay = config.MaxDelayMs,
+            });
+            var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+            var resp = await _http.PostAsync($"{_automationUrl}{endpoint}", content, ct);
             var json = await resp.Content.ReadAsStringAsync(ct);
 
             using var doc = JsonDocument.Parse(json);
@@ -53,10 +71,10 @@ public sealed class AutomationJob
             {
                 Id = Guid.NewGuid(),
                 Provider = "microsoft-rewards",
-                Task = "bing-searches",
+                Task = task,
                 Success = success,
                 ItemsCompleted = searches,
-                ItemsTotal = 33,
+                ItemsTotal = searchCount,
                 PointsAfter = pointsAfter,
                 LogOutput = logLines,
                 StartedAt = startedAt,
@@ -64,20 +82,21 @@ public sealed class AutomationJob
             });
             await _db.SaveChangesAsync(ct);
 
-            _logger.LogInformation("AutomationJob: Bing searches completed ({Searches}/33, success={Success})", searches, success);
+            _logger.LogInformation("AutomationJob: {Task} completed ({Searches} searches, success={Success})",
+                task, searches, success);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AutomationJob: Bing searches failed");
+            _logger.LogError(ex, "AutomationJob: {Task} failed", task);
 
             _db.AutomationRuns.Add(new AutomationRun
             {
                 Id = Guid.NewGuid(),
                 Provider = "microsoft-rewards",
-                Task = "bing-searches",
+                Task = task,
                 Success = false,
                 ItemsCompleted = 0,
-                ItemsTotal = 33,
+                ItemsTotal = searchCount,
                 Error = ex.Message,
                 StartedAt = startedAt,
                 CompletedAt = DateTimeOffset.UtcNow,

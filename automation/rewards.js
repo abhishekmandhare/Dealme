@@ -1,43 +1,40 @@
 import { chromium } from 'playwright'
 import { getRandomQueries } from './words.js'
-import path from 'path'
 
 const PROFILE_DIR = process.env.PROFILE_DIR || '/data/browser-profile'
 const SEARCH_COUNT = parseInt(process.env.SEARCH_COUNT || '33', 10)
-const MIN_DELAY = parseInt(process.env.MIN_DELAY || '8000', 10)   // ms between searches
+const MOBILE_SEARCH_COUNT = parseInt(process.env.MOBILE_SEARCH_COUNT || '20', 10)
+const MIN_DELAY = parseInt(process.env.MIN_DELAY || '8000', 10)
 const MAX_DELAY = parseInt(process.env.MAX_DELAY || '20000', 10)
+
+const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
+const MOBILE_UA  = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/131.0.0.0 Mobile/15E148 Safari/604.1'
 
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms))
 }
 
-function randomDelay() {
-  return MIN_DELAY + Math.random() * (MAX_DELAY - MIN_DELAY)
-}
-
-export async function runBingSearches() {
+async function runSearches({ count, minD, maxD, userAgent, viewport, label }) {
   const log = []
   const push = (msg) => { console.log(msg); log.push(msg) }
 
-  push(`Starting Bing searches (count: ${SEARCH_COUNT})`)
+  push(`Starting Bing ${label} searches (count: ${count})`)
 
   const context = await chromium.launchPersistentContext(PROFILE_DIR, {
     headless: true,
     args: ['--disable-blink-features=AutomationControlled'],
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0',
-    viewport: { width: 1366, height: 768 },
+    userAgent,
+    viewport,
     locale: 'en-AU',
     timezoneId: 'Australia/Sydney',
   })
 
   const page = context.pages()[0] || await context.newPage()
 
-  // Check if logged in by visiting Bing
   try {
     await page.goto('https://www.bing.com/', { waitUntil: 'domcontentloaded', timeout: 15000 })
     await sleep(2000)
 
-    // Check for logged-in user — look for the visible name element
     const nameEl = await page.$('#id_n')
     const nameText = nameEl ? (await nameEl.textContent()).trim() : ''
     const nameVisible = nameEl ? await nameEl.isVisible() : false
@@ -53,7 +50,7 @@ export async function runBingSearches() {
     push(`Warning: Could not check login status: ${e.message}`)
   }
 
-  const queries = getRandomQueries(SEARCH_COUNT)
+  const queries = getRandomQueries(count)
   let completed = 0
 
   for (const query of queries) {
@@ -63,22 +60,19 @@ export async function runBingSearches() {
         timeout: 15000,
       })
       completed++
-      push(`[${completed}/${SEARCH_COUNT}] Searched: "${query}"`)
+      push(`[${completed}/${count}] Searched: "${query}"`)
 
-      // Random delay between searches
-      const delay = randomDelay()
+      const delay = minD + Math.random() * (maxD - minD)
       await sleep(delay)
     } catch (e) {
-      push(`[${completed + 1}/${SEARCH_COUNT}] Failed: "${query}" — ${e.message}`)
+      push(`[${completed + 1}/${count}] Failed: "${query}" — ${e.message}`)
     }
   }
 
-  // Check points after via rewards dashboard
   try {
     await page.goto('https://rewards.bing.com/', { waitUntil: 'domcontentloaded', timeout: 15000 })
     await sleep(3000)
     const content = await page.content()
-    // Look for points balance in page content
     const pointsMatch = content.match(/availablePoints["\s:]+(\d[\d,]*)/i)
       || content.match(/(\d[\d,]+)\s*(?:available\s*)?points/i)
     if (pointsMatch) push(`Points balance: ${pointsMatch[1]}`)
@@ -88,7 +82,29 @@ export async function runBingSearches() {
   }
 
   await context.close()
-  push(`Done. Completed ${completed}/${SEARCH_COUNT} searches.`)
+  push(`Done. Completed ${completed}/${count} ${label} searches.`)
 
   return { success: true, searches: completed, log }
+}
+
+export async function runBingSearches({ searchCount, minDelay, maxDelay } = {}) {
+  return runSearches({
+    count: searchCount ?? SEARCH_COUNT,
+    minD: minDelay ?? MIN_DELAY,
+    maxD: maxDelay ?? MAX_DELAY,
+    userAgent: DESKTOP_UA,
+    viewport: { width: 1366, height: 768 },
+    label: 'desktop',
+  })
+}
+
+export async function runBingMobileSearches({ searchCount, minDelay, maxDelay } = {}) {
+  return runSearches({
+    count: searchCount ?? MOBILE_SEARCH_COUNT,
+    minD: minDelay ?? MIN_DELAY,
+    maxD: maxDelay ?? MAX_DELAY,
+    userAgent: MOBILE_UA,
+    viewport: { width: 390, height: 844 },
+    label: 'mobile',
+  })
 }

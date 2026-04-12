@@ -1360,9 +1360,153 @@ li.opp-item {
   color: var(--muted);
 }
 
+/* ── Config section ── */
+.rw-config-section {
+  margin-top: 28px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.rw-config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.rw-config-header h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.rw-config-edit-btn {
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.rw-config-edit-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.rw-config-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 24px;
+}
+
+.rw-config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rw-config-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rw-config-value {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.rw-config-disabled {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.rw-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rw-config-schedule-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rw-config-cron-toggle {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.rw-config-cron-toggle:hover {
+  color: var(--accent-hover);
+  border-color: var(--accent);
+}
+
+input[type="time"] {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+input[type="time"]:focus {
+  border-color: var(--accent);
+}
+
+.rw-config-delay-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.rw-config-enabled-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.rw-config-enabled-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.rw-config-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}
+
 @media (max-width: 600px) {
   .rw-stats-grid { grid-template-columns: repeat(2, 1fr); }
   .rw-task-item { flex-direction: column; align-items: stretch; }
+  .rw-config-fields { grid-template-columns: 1fr; }
+  .rw-config-delay-row { grid-template-columns: 1fr; }
 }
 
 /* ── States ── */

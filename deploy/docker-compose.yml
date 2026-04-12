@@ -54,6 +54,7 @@ services:
       dockerfile: Dockerfile
     container_name: dealme-automation
     restart: unless-stopped
+    stop_grace_period: 30s
     ports:
       - "3100:3100"
     volumes:

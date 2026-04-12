@@ -2,7 +2,9 @@ namespace DealMe.Api.Controllers;
 
 using System.Text.Json;
 using DealMe.Core.Domain.Entities;
+using DealMe.Infrastructure.Jobs;
 using DealMe.Infrastructure.Persistence;
+using Hangfire;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -14,17 +16,20 @@ public class AutomationController : ControllerBase
     private readonly DealMeDbContext _db;
     private readonly HttpClient _http;
     private readonly string _automationUrl;
+    private readonly IRecurringJobManager _jobs;
     private readonly ILogger<AutomationController> _logger;
 
     public AutomationController(
         DealMeDbContext db,
         IHttpClientFactory httpFactory,
         IConfiguration config,
+        IRecurringJobManager jobs,
         ILogger<AutomationController> logger)
     {
         _db = db;
         _http = httpFactory.CreateClient("automation");
         _automationUrl = (config["AUTOMATION_URL"] ?? "http://automation:3100").TrimEnd('/');
+        _jobs = jobs;
         _logger = logger;
     }
 
@@ -32,36 +37,12 @@ public class AutomationController : ControllerBase
     [HttpGet("providers")]
     public async Task<IActionResult> GetProviders(CancellationToken ct)
     {
-        var providers = new[]
-        {
-            new
-            {
-                id = "microsoft-rewards",
-                name = "Microsoft Rewards",
-                description = "Earn points by performing Bing searches. Points can be redeemed for gift cards, sweepstakes entries, and donations.",
-                tasks = new[]
-                {
-                    new
-                    {
-                        id = "bing-searches",
-                        name = "Bing Searches",
-                        description = "Performs up to 33 desktop searches on Bing to earn ~150 points per day. Searches use randomised queries with natural delays between them.",
-                        schedule = "Daily at 7:00 AM AEST",
-                        maxPointsPerDay = 150,
-                    },
-                },
-                loginRequired = true,
-                loginInstructions = "Run the login script on the server to authenticate your Microsoft account. The session is stored in a persistent browser profile.",
-            },
-        };
-
-        // Get last run for each provider
+        var configs = await _db.AutomationProviderConfigs.ToListAsync(ct);
         var lastRuns = await _db.AutomationRuns
             .GroupBy(r => r.Provider)
             .Select(g => g.OrderByDescending(r => r.StartedAt).First())
             .ToListAsync(ct);
 
-        // Check automation service health
         bool serviceHealthy;
         try
         {
@@ -73,19 +54,102 @@ public class AutomationController : ControllerBase
             serviceHealthy = false;
         }
 
-        var result = providers.Select(p => new
-        {
-            p.id,
-            p.name,
-            p.description,
-            p.tasks,
-            p.loginRequired,
-            p.loginInstructions,
-            serviceHealthy,
-            lastRun = lastRuns.FirstOrDefault(r => r.Provider == p.id),
-        });
+        var msConfig = configs.FirstOrDefault(c => c.ProviderId == "microsoft-rewards")
+            ?? new AutomationProviderConfig { ProviderId = "microsoft-rewards" };
 
-        return Ok(result);
+        var providers = new[]
+        {
+            new
+            {
+                id = "microsoft-rewards",
+                name = "Microsoft Rewards",
+                description = "Earn points by performing Bing searches. Points can be redeemed for gift cards, sweepstakes entries, and donations.",
+                tasks = new object[]
+                {
+                    new
+                    {
+                        id = "bing-searches",
+                        name = "Bing Searches (Desktop)",
+                        description = $"Performs up to {msConfig.SearchCount} desktop searches on Bing to earn ~150 points per day.",
+                        schedule = CronToAest(msConfig.CronSchedule),
+                        maxPointsPerDay = 150,
+                    },
+                    new
+                    {
+                        id = "bing-searches-mobile",
+                        name = "Bing Searches (Mobile)",
+                        description = $"Performs up to {msConfig.MobileSearchCount} mobile searches using an Edge iOS user agent to earn ~100 points per day.",
+                        schedule = CronToAest(msConfig.CronSchedule),
+                        maxPointsPerDay = 100,
+                    },
+                },
+                loginRequired = true,
+                loginInstructions = "Run the login script on the server to authenticate your Microsoft account. The session is stored in a persistent browser profile.",
+                serviceHealthy,
+                lastRun = lastRuns.FirstOrDefault(r => r.Provider == "microsoft-rewards"),
+            },
+        };
+
+        return Ok(providers);
+    }
+
+    /// <summary>Config for a specific provider.</summary>
+    [HttpGet("providers/{provider}/config")]
+    public async Task<IActionResult> GetConfig(string provider, CancellationToken ct)
+    {
+        var config = await _db.AutomationProviderConfigs.FindAsync([provider], ct)
+            ?? new AutomationProviderConfig { ProviderId = provider };
+        return Ok(config);
+    }
+
+    /// <summary>Update config for a specific provider.</summary>
+    [HttpPut("providers/{provider}/config")]
+    public async Task<IActionResult> PutConfig(string provider, [FromBody] AutomationProviderConfig body, CancellationToken ct)
+    {
+        if (provider != body.ProviderId)
+            return BadRequest("Provider ID mismatch");
+
+        var existing = await _db.AutomationProviderConfigs.FindAsync([provider], ct);
+        if (existing == null)
+        {
+            _db.AutomationProviderConfigs.Add(body);
+        }
+        else
+        {
+            existing.AccountLabel = body.AccountLabel;
+            existing.CronSchedule = body.CronSchedule;
+            existing.SearchCount = body.SearchCount;
+            existing.MobileSearchCount = body.MobileSearchCount;
+            existing.MinDelayMs = body.MinDelayMs;
+            existing.MaxDelayMs = body.MaxDelayMs;
+            existing.Enabled = body.Enabled;
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        // Update Hangfire schedule if microsoft-rewards
+        if (provider == "microsoft-rewards")
+        {
+            if (body.Enabled)
+            {
+                _jobs.AddOrUpdate<AutomationJob>(
+                    "bing-searches",
+                    job => job.RunBingSearchesAsync(CancellationToken.None),
+                    body.CronSchedule);
+                _jobs.AddOrUpdate<AutomationJob>(
+                    "bing-searches-mobile",
+                    job => job.RunBingMobileSearchesAsync(CancellationToken.None),
+                    body.CronSchedule);
+            }
+            else
+            {
+                _jobs.RemoveIfExists("bing-searches");
+                _jobs.RemoveIfExists("bing-searches-mobile");
+            }
+        }
+
+        _logger.LogInformation("Automation config updated for {Provider}", provider);
+        return Ok(body);
     }
 
     /// <summary>Run history for a specific provider.</summary>
@@ -119,14 +183,29 @@ public class AutomationController : ControllerBase
     [HttpPost("providers/{provider}/run/{task}")]
     public async Task<IActionResult> RunTask(string provider, string task, CancellationToken ct)
     {
-        if (provider != "microsoft-rewards" || task != "bing-searches")
+        if (provider != "microsoft-rewards"
+            || (task != "bing-searches" && task != "bing-searches-mobile"))
             return BadRequest("Unknown provider/task");
+
+        var config = await _db.AutomationProviderConfigs.FindAsync([provider], ct)
+            ?? new AutomationProviderConfig { ProviderId = provider };
+
+        var isMobile = task == "bing-searches-mobile";
+        var searchCount = isMobile ? config.MobileSearchCount : config.SearchCount;
+        var automationEndpoint = isMobile ? "/run/bing-searches-mobile" : "/run/bing-searches";
 
         var startedAt = DateTimeOffset.UtcNow;
 
         try
         {
-            var resp = await _http.PostAsync($"{_automationUrl}/run/bing-searches", null, ct);
+            var payload = JsonSerializer.Serialize(new
+            {
+                searchCount,
+                minDelay = config.MinDelayMs,
+                maxDelay = config.MaxDelayMs,
+            });
+            var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+            var resp = await _http.PostAsync($"{_automationUrl}{automationEndpoint}", content, ct);
             var json = await resp.Content.ReadAsStringAsync(ct);
 
             using var doc = JsonDocument.Parse(json);
@@ -137,7 +216,6 @@ public class AutomationController : ControllerBase
             var logLines = root.TryGetProperty("log", out var lg) ? lg.ToString() : null;
             var error = !success && root.TryGetProperty("error", out var err) ? err.GetString() : null;
 
-            // Try to extract points from log
             int? pointsAfter = null;
             if (logLines != null)
             {
@@ -154,7 +232,7 @@ public class AutomationController : ControllerBase
                 Task = task,
                 Success = success,
                 ItemsCompleted = searches,
-                ItemsTotal = 33,
+                ItemsTotal = searchCount,
                 PointsAfter = pointsAfter,
                 Error = error,
                 LogOutput = logLines,
@@ -180,7 +258,7 @@ public class AutomationController : ControllerBase
                 Task = task,
                 Success = false,
                 ItemsCompleted = 0,
-                ItemsTotal = 33,
+                ItemsTotal = searchCount,
                 Error = ex.Message,
                 StartedAt = startedAt,
                 CompletedAt = DateTimeOffset.UtcNow,
@@ -209,7 +287,6 @@ public class AutomationController : ControllerBase
         var todayRuns = runs.Where(r => r.StartedAt.Date == today).ToList();
         var weekRuns = runs.Where(r => r.StartedAt >= weekAgo).ToList();
 
-        // Estimate points earned from successful runs
         var todayPoints = todayRuns.Where(r => r.Success).Sum(r => r.ItemsCompleted * 5);
         var weekPoints = weekRuns.Where(r => r.Success).Sum(r => r.ItemsCompleted * 5);
         var monthPoints = runs.Where(r => r.Success).Sum(r => r.ItemsCompleted * 5);
@@ -223,5 +300,22 @@ public class AutomationController : ControllerBase
             month = new { runs = runs.Count, pointsEstimate = monthPoints, success = runs.Count(r => r.Success) },
             totalRuns = runs.Count,
         });
+    }
+
+    private static string CronToAest(string cron)
+    {
+        // Convert simple "M H * * *" daily cron (UTC) to a human-readable AEST label
+        var parts = cron.Split(' ');
+        if (parts.Length == 5
+            && int.TryParse(parts[0], out var min)
+            && int.TryParse(parts[1], out var hourUtc)
+            && parts[2] == "*" && parts[3] == "*" && parts[4] == "*")
+        {
+            var hourAest = (hourUtc + 10) % 24;
+            var period = hourAest >= 12 ? "PM" : "AM";
+            var displayHour = hourAest % 12 == 0 ? 12 : hourAest % 12;
+            return $"Daily at {displayHour}:{min:D2} {period} AEST";
+        }
+        return $"Cron: {cron}";
     }
 }

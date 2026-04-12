@@ -28,6 +28,7 @@ public class DealMeDbContext : DbContext
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
     public DbSet<NotificationChannel> NotificationChannels => Set<NotificationChannel>();
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
+    public DbSet<AutomationProviderConfig> AutomationProviderConfigs => Set<AutomationProviderConfig>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -102,6 +103,16 @@ public class DealMeDbContext : DbContext
             e.Property(x => x.Task).HasMaxLength(50).IsRequired();
             e.HasIndex(x => new { x.Provider, x.StartedAt })
              .HasDatabaseName("IX_AutoRun_Provider_Started");
+        });
+
+        mb.Entity<AutomationProviderConfig>(e =>
+        {
+            e.HasKey(x => x.ProviderId);
+            e.Property(x => x.ProviderId).HasMaxLength(50).IsRequired();
+            e.Property(x => x.AccountLabel).HasMaxLength(100);
+            e.Property(x => x.CronSchedule).HasMaxLength(100).IsRequired()
+             .HasDefaultValue("0 21 * * *");
+            e.Property(x => x.MobileSearchCount).HasDefaultValue(20);
         });
     }
 }

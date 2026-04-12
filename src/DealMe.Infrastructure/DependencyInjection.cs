@@ -28,6 +28,9 @@ public static class DependencyInjection
                 opts.UseNpgsql(connStr);
             else
                 opts.UseSqlite(connStr);
+
+            opts.ConfigureWarnings(w =>
+                w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         });
 
         // Adapters hold mutable _lastStatus — register as Singleton.

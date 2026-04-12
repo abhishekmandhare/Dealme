@@ -38,3 +38,14 @@ export interface AutomationStats {
   month: { runs: number; pointsEstimate: number; success: number }
   totalRuns: number
 }
+
+export interface AutomationConfig {
+  providerId: string
+  accountLabel: string | null
+  cronSchedule: string
+  searchCount: number
+  mobileSearchCount: number
+  minDelayMs: number
+  maxDelayMs: number
+  enabled: boolean
+}

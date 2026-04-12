@@ -75,5 +75,10 @@ RecurringJob.AddOrUpdate<AutomationJob>(
     job => job.RunBingSearchesAsync(CancellationToken.None),
     "0 21 * * *"); // 21:00 UTC = 7:00 AM AEST
 
+RecurringJob.AddOrUpdate<AutomationJob>(
+    "bing-searches-mobile",
+    job => job.RunBingMobileSearchesAsync(CancellationToken.None),
+    "0 21 * * *"); // same schedule as desktop
+
 app.MapControllers();
 app.Run();
