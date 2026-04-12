@@ -35,17 +35,21 @@ async function runSearches({ count, minD, maxD, userAgent, viewport, label }) {
     await page.goto('https://www.bing.com/', { waitUntil: 'domcontentloaded', timeout: 15000 })
     await sleep(2000)
 
-    const nameEl = await page.$('#id_n')
-    const nameText = nameEl ? (await nameEl.textContent()).trim() : ''
-    const nameVisible = nameEl ? await nameEl.isVisible() : false
+    // Desktop shows #id_n (username); mobile shows #id_s (account icon) or hides #id_a (sign-in).
+    // We're logged OUT if the sign-in link (#id_a) is visible.
+    const signInEl = await page.$('#id_a')
+    const signInVisible = signInEl ? await signInEl.isVisible() : false
 
-    if (!nameText || !nameVisible) {
+    if (signInVisible) {
       push('ERROR: Not logged in. Run the login flow first.')
       await context.close()
       return { success: false, searches: 0, log }
     }
 
-    push(`Logged in as: ${nameText}`)
+    // Try to read the display name (desktop only — fine to skip on mobile)
+    const nameEl = await page.$('#id_n')
+    const nameText = nameEl ? (await nameEl.textContent()).trim() : ''
+    push(nameText ? `Logged in as: ${nameText}` : 'Logged in (mobile — name not shown)')
   } catch (e) {
     push(`Warning: Could not check login status: ${e.message}`)
   }
