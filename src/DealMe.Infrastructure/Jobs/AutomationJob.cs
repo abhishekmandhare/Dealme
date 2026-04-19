@@ -31,6 +31,71 @@ public sealed class AutomationJob
     public Task RunBingMobileSearchesAsync(CancellationToken ct = default)
         => RunTaskAsync("bing-searches-mobile", "/run/bing-searches-mobile", useDesktop: false, ct);
 
+    public async Task RunDailyActivitiesAsync(CancellationToken ct = default)
+    {
+        const string task = "daily-activities";
+        _logger.LogInformation("AutomationJob: starting {Task}", task);
+        var startedAt = DateTimeOffset.UtcNow;
+
+        try
+        {
+            var resp = await _http.PostAsync(
+                $"{_automationUrl}/run/daily-activities",
+                new StringContent("{}", System.Text.Encoding.UTF8, "application/json"),
+                ct);
+            var json = await resp.Content.ReadAsStringAsync(ct);
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            var success = root.TryGetProperty("success", out var s) && s.GetBoolean();
+            var processed = root.TryGetProperty("completed", out var c) ? c.GetInt32() : 0;
+            var logLines = root.TryGetProperty("log", out var lg) ? lg.ToString() : null;
+
+            int? pointsAfter = null;
+            if (logLines != null)
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(logLines, @"Points balance:\s*([\d,]+)");
+                if (m.Success) pointsAfter = int.Parse(m.Groups[1].Value.Replace(",", ""));
+            }
+
+            _db.AutomationRuns.Add(new AutomationRun
+            {
+                Id = Guid.NewGuid(),
+                Provider = "microsoft-rewards",
+                Task = task,
+                Success = success,
+                ItemsCompleted = processed,
+                ItemsTotal = processed,
+                PointsAfter = pointsAfter,
+                LogOutput = logLines,
+                StartedAt = startedAt,
+                CompletedAt = DateTimeOffset.UtcNow,
+            });
+            await _db.SaveChangesAsync(ct);
+
+            _logger.LogInformation("AutomationJob: {Task} completed ({Processed} activities, success={Success})",
+                task, processed, success);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AutomationJob: {Task} failed", task);
+            _db.AutomationRuns.Add(new AutomationRun
+            {
+                Id = Guid.NewGuid(),
+                Provider = "microsoft-rewards",
+                Task = task,
+                Success = false,
+                ItemsCompleted = 0,
+                ItemsTotal = 0,
+                Error = ex.Message,
+                StartedAt = startedAt,
+                CompletedAt = DateTimeOffset.UtcNow,
+            });
+            await _db.SaveChangesAsync(ct);
+        }
+    }
+
     private async Task RunTaskAsync(string task, string endpoint, bool useDesktop, CancellationToken ct)
     {
         _logger.LogInformation("AutomationJob: starting {Task}", task);

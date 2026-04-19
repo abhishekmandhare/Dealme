@@ -1,4 +1,7 @@
-import { chromium } from 'playwright'
+import { chromium } from 'playwright-extra'
+import stealth from 'puppeteer-extra-plugin-stealth'
+
+chromium.use(stealth())
 
 // Interactive login script — run this once to set up the browser profile.
 // After logging in, the session is saved to the persistent profile directory.
@@ -15,6 +18,7 @@ console.log('')
 
 const context = await chromium.launchPersistentContext(PROFILE_DIR, {
   headless: false,
+  channel: 'msedge',
   args: ['--disable-blink-features=AutomationControlled'],
   viewport: { width: 1366, height: 768 },
 })

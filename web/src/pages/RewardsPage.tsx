@@ -264,6 +264,10 @@ function ConfigSection({ providerId }: { providerId: string }) {
 
 // ── Provider list ─────────────────────────────────────────────────────────
 
+const PROVIDER_SITES: Record<string, { url: string; label: string }> = {
+  'microsoft-rewards': { url: 'https://rewards.bing.com/', label: 'Open Microsoft Rewards' },
+}
+
 function ProviderCard({ provider, onClick }: { provider: AutomationProvider; onClick: () => void }) {
   const lastRun = provider.lastRun
   const healthy = provider.serviceHealthy
@@ -311,11 +315,11 @@ function ProviderDetail({ provider, onBack }: { provider: AutomationProvider; on
   const { data: history, refetch: refetchHistory } = useFetch<AutomationRun[]>(
     `/automation/providers/${provider.id}/history?limit=20`
   )
-  const [running, setRunning] = useState(false)
+  const [runningTaskId, setRunningTaskId] = useState<string | null>(null)
   const [lastResult, setLastResult] = useState<AutomationRun | null>(null)
 
   const runTask = async (taskId: string) => {
-    setRunning(true)
+    setRunningTaskId(taskId)
     try {
       const result = await api.post<AutomationRun>(`/automation/providers/${provider.id}/run/${taskId}`, {})
       setLastResult(result)
@@ -323,7 +327,7 @@ function ProviderDetail({ provider, onBack }: { provider: AutomationProvider; on
     } catch (e) {
       setLastResult({ success: false, error: String(e) } as AutomationRun)
     } finally {
-      setRunning(false)
+      setRunningTaskId(null)
     }
   }
 
@@ -333,8 +337,20 @@ function ProviderDetail({ provider, onBack }: { provider: AutomationProvider; on
 
       <div className="rw-detail-header">
         <h2>{provider.name}</h2>
-        <div className={`rw-service-badge ${provider.serviceHealthy ? 'online' : 'offline'}`}>
-          {provider.serviceHealthy ? 'Service Online' : 'Service Offline'}
+        <div className="rw-detail-header-actions">
+          {PROVIDER_SITES[provider.id] && (
+            <a
+              className="rw-external-link"
+              href={PROVIDER_SITES[provider.id].url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {PROVIDER_SITES[provider.id].label} ↗
+            </a>
+          )}
+          <div className={`rw-service-badge ${provider.serviceHealthy ? 'online' : 'offline'}`}>
+            {provider.serviceHealthy ? 'Service Online' : 'Service Offline'}
+          </div>
         </div>
       </div>
 
@@ -378,9 +394,9 @@ function ProviderDetail({ provider, onBack }: { provider: AutomationProvider; on
             <button
               className="primary"
               onClick={() => runTask(t.id)}
-              disabled={running || !provider.serviceHealthy}
+              disabled={runningTaskId !== null || !provider.serviceHealthy}
             >
-              {running ? 'Running...' : 'Run Now'}
+              {runningTaskId === t.id ? 'Running...' : 'Run Now'}
             </button>
           </li>
         ))}

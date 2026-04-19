@@ -79,8 +79,16 @@ public class AutomationController : ControllerBase
                         id = "bing-searches-mobile",
                         name = "Bing Searches (Mobile)",
                         description = $"Performs up to {msConfig.MobileSearchCount} mobile searches using an Edge iOS user agent to earn ~100 points per day.",
-                        schedule = CronToAest(msConfig.CronSchedule),
+                        schedule = CronToAest(OffsetCron(msConfig.CronSchedule, minutesOffset: 30)),
                         maxPointsPerDay = 100,
+                    },
+                    new
+                    {
+                        id = "daily-activities",
+                        name = "Daily Activities",
+                        description = "Clicks through the Daily Set and More Activities tiles on the rewards dashboard (quizzes, polls, article-reads) to earn ~60–100 points per day.",
+                        schedule = CronToAest(OffsetCron(msConfig.CronSchedule, minutesOffset: 60)),
+                        maxPointsPerDay = 80,
                     },
                 },
                 loginRequired = true,
@@ -139,12 +147,17 @@ public class AutomationController : ControllerBase
                 _jobs.AddOrUpdate<AutomationJob>(
                     "bing-searches-mobile",
                     job => job.RunBingMobileSearchesAsync(CancellationToken.None),
-                    body.CronSchedule);
+                    OffsetCron(body.CronSchedule, minutesOffset: 30));
+                _jobs.AddOrUpdate<AutomationJob>(
+                    "daily-activities",
+                    job => job.RunDailyActivitiesAsync(CancellationToken.None),
+                    OffsetCron(body.CronSchedule, minutesOffset: 60));
             }
             else
             {
                 _jobs.RemoveIfExists("bing-searches");
                 _jobs.RemoveIfExists("bing-searches-mobile");
+                _jobs.RemoveIfExists("daily-activities");
             }
         }
 
@@ -181,29 +194,42 @@ public class AutomationController : ControllerBase
 
     /// <summary>Trigger a task run for a provider.</summary>
     [HttpPost("providers/{provider}/run/{task}")]
-    public async Task<IActionResult> RunTask(string provider, string task, CancellationToken ct)
+    public async Task<IActionResult> RunTask(string provider, string task)
     {
+        // Intentionally ignore the request cancellation token: the downstream automation
+        // call takes minutes to complete, and we don't want a browser tab being closed
+        // (or a proxy timeout) to kill the run mid-flight and leave the DB without a record.
+        var ct = CancellationToken.None;
+
         if (provider != "microsoft-rewards"
-            || (task != "bing-searches" && task != "bing-searches-mobile"))
+            || (task != "bing-searches" && task != "bing-searches-mobile" && task != "daily-activities"))
             return BadRequest("Unknown provider/task");
 
         var config = await _db.AutomationProviderConfigs.FindAsync([provider], ct)
             ?? new AutomationProviderConfig { ProviderId = provider };
 
         var isMobile = task == "bing-searches-mobile";
-        var searchCount = isMobile ? config.MobileSearchCount : config.SearchCount;
-        var automationEndpoint = isMobile ? "/run/bing-searches-mobile" : "/run/bing-searches";
+        var isDailyActivities = task == "daily-activities";
+        var itemsTotal = isDailyActivities ? 0 : (isMobile ? config.MobileSearchCount : config.SearchCount);
+        var automationEndpoint = task switch
+        {
+            "bing-searches-mobile" => "/run/bing-searches-mobile",
+            "daily-activities" => "/run/daily-activities",
+            _ => "/run/bing-searches",
+        };
 
         var startedAt = DateTimeOffset.UtcNow;
 
         try
         {
-            var payload = JsonSerializer.Serialize(new
-            {
-                searchCount,
-                minDelay = config.MinDelayMs,
-                maxDelay = config.MaxDelayMs,
-            });
+            var payload = isDailyActivities
+                ? "{}"
+                : JsonSerializer.Serialize(new
+                {
+                    searchCount = itemsTotal,
+                    minDelay = config.MinDelayMs,
+                    maxDelay = config.MaxDelayMs,
+                });
             var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
             var resp = await _http.PostAsync($"{_automationUrl}{automationEndpoint}", content, ct);
             var json = await resp.Content.ReadAsStringAsync(ct);
@@ -212,7 +238,10 @@ public class AutomationController : ControllerBase
             var root = doc.RootElement;
 
             var success = root.TryGetProperty("success", out var s) && s.GetBoolean();
-            var searches = root.TryGetProperty("searches", out var sc) ? sc.GetInt32() : 0;
+            // Searches return "searches"; daily-activities returns "completed".
+            var completedCount = isDailyActivities
+                ? (root.TryGetProperty("completed", out var cc) ? cc.GetInt32() : 0)
+                : (root.TryGetProperty("searches", out var sc) ? sc.GetInt32() : 0);
             var logLines = root.TryGetProperty("log", out var lg) ? lg.ToString() : null;
             var error = !success && root.TryGetProperty("error", out var err) ? err.GetString() : null;
 
@@ -231,8 +260,8 @@ public class AutomationController : ControllerBase
                 Provider = provider,
                 Task = task,
                 Success = success,
-                ItemsCompleted = searches,
-                ItemsTotal = searchCount,
+                ItemsCompleted = completedCount,
+                ItemsTotal = isDailyActivities ? completedCount : itemsTotal,
                 PointsAfter = pointsAfter,
                 Error = error,
                 LogOutput = logLines,
@@ -242,8 +271,8 @@ public class AutomationController : ControllerBase
             _db.AutomationRuns.Add(run);
             await _db.SaveChangesAsync(ct);
 
-            _logger.LogInformation("Automation {Provider}/{Task}: {Searches} searches, success={Success}",
-                provider, task, searches, success);
+            _logger.LogInformation("Automation {Provider}/{Task}: {Completed} items, success={Success}",
+                provider, task, completedCount, success);
 
             return Ok(run);
         }
@@ -258,7 +287,7 @@ public class AutomationController : ControllerBase
                 Task = task,
                 Success = false,
                 ItemsCompleted = 0,
-                ItemsTotal = searchCount,
+                ItemsTotal = itemsTotal,
                 Error = ex.Message,
                 StartedAt = startedAt,
                 CompletedAt = DateTimeOffset.UtcNow,
@@ -300,6 +329,21 @@ public class AutomationController : ControllerBase
             month = new { runs = runs.Count, pointsEstimate = monthPoints, success = runs.Count(r => r.Success) },
             totalRuns = runs.Count,
         });
+    }
+
+    /// <summary>Shift a simple "M H * * *" daily cron by N minutes. Falls back to input if unparseable.</summary>
+    private static string OffsetCron(string cron, int minutesOffset)
+    {
+        var parts = cron.Split(' ');
+        if (parts.Length == 5
+            && int.TryParse(parts[0], out var min)
+            && int.TryParse(parts[1], out var hour))
+        {
+            var total = (hour * 60 + min + minutesOffset) % (24 * 60);
+            if (total < 0) total += 24 * 60;
+            return $"{total % 60} {total / 60} {parts[2]} {parts[3]} {parts[4]}";
+        }
+        return cron;
     }
 
     private static string CronToAest(string cron)

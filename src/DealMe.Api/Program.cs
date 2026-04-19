@@ -78,7 +78,12 @@ RecurringJob.AddOrUpdate<AutomationJob>(
 RecurringJob.AddOrUpdate<AutomationJob>(
     "bing-searches-mobile",
     job => job.RunBingMobileSearchesAsync(CancellationToken.None),
-    "0 21 * * *"); // same schedule as desktop
+    "30 21 * * *"); // 30 min after desktop so the two runs don't collide on the automation server
+
+RecurringJob.AddOrUpdate<AutomationJob>(
+    "daily-activities",
+    job => job.RunDailyActivitiesAsync(CancellationToken.None),
+    "0 22 * * *"); // 60 min after desktop; runs after both search jobs so Bing has crediting windows
 
 app.MapControllers();
 app.Run();

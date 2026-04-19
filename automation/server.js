@@ -1,5 +1,5 @@
 import express from 'express'
-import { runBingSearches, runBingMobileSearches } from './rewards.js'
+import { runBingSearches, runBingMobileSearches, runDailyActivities } from './rewards.js'
 
 const app = express()
 const PORT = parseInt(process.env.PORT || '3100', 10)
@@ -65,6 +65,37 @@ app.post('/run/bing-searches-mobile', async (req, res) => {
   } catch (e) {
     lastRun = {
       task: 'bing-searches-mobile',
+      success: false,
+      error: e.message,
+      timestamp: new Date().toISOString(),
+    }
+    res.status(500).json(lastRun)
+  } finally {
+    running = false
+  }
+})
+
+app.post('/run/daily-activities', async (req, res) => {
+  if (running) {
+    return res.status(409).json({ error: 'Already running' })
+  }
+
+  const { maxActivities } = req.body || {}
+
+  running = true
+  try {
+    const result = await runDailyActivities({ maxActivities })
+    lastRun = {
+      task: 'daily-activities',
+      success: result.success,
+      completed: result.completed,
+      timestamp: new Date().toISOString(),
+      log: result.log,
+    }
+    res.json(lastRun)
+  } catch (e) {
+    lastRun = {
+      task: 'daily-activities',
       success: false,
       error: e.message,
       timestamp: new Date().toISOString(),
