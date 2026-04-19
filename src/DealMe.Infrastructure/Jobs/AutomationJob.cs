@@ -31,6 +31,68 @@ public sealed class AutomationJob
     public Task RunBingMobileSearchesAsync(CancellationToken ct = default)
         => RunTaskAsync("bing-searches-mobile", "/run/bing-searches-mobile", useDesktop: false, ct);
 
+    public async Task RunAmazon5RedemptionAsync(CancellationToken ct = default)
+    {
+        const string task = "redeem-amazon-5";
+        _logger.LogInformation("AutomationJob: starting {Task}", task);
+        var startedAt = DateTimeOffset.UtcNow;
+
+        try
+        {
+            var payload = JsonSerializer.Serialize(new { brand = "amazon", denomination = 5, dryRun = false });
+            var resp = await _http.PostAsync(
+                $"{_automationUrl}/run/redeem",
+                new StringContent(payload, System.Text.Encoding.UTF8, "application/json"),
+                ct);
+            var json = await resp.Content.ReadAsStringAsync(ct);
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            var success = root.TryGetProperty("success", out var s) && s.GetBoolean();
+            int? pb = root.TryGetProperty("pointsBefore", out var pbE) && pbE.ValueKind == JsonValueKind.Number ? pbE.GetInt32() : null;
+            int? pa = root.TryGetProperty("pointsAfter", out var paE) && paE.ValueKind == JsonValueKind.Number ? paE.GetInt32() : null;
+            var error = !success && root.TryGetProperty("error", out var errE) ? errE.GetString() : null;
+            var logLines = root.TryGetProperty("log", out var lg) ? lg.ToString() : null;
+
+            _db.AutomationRuns.Add(new AutomationRun
+            {
+                Id = Guid.NewGuid(),
+                Provider = "microsoft-rewards",
+                Task = task,
+                Success = success,
+                ItemsCompleted = success ? 1 : 0,
+                ItemsTotal = 1,
+                PointsBefore = pb,
+                PointsAfter = pa,
+                Error = error,
+                LogOutput = logLines,
+                StartedAt = startedAt,
+                CompletedAt = DateTimeOffset.UtcNow,
+            });
+            await _db.SaveChangesAsync(ct);
+
+            _logger.LogInformation("AutomationJob: {Task} success={Success} error={Error}", task, success, error);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AutomationJob: {Task} failed", task);
+            _db.AutomationRuns.Add(new AutomationRun
+            {
+                Id = Guid.NewGuid(),
+                Provider = "microsoft-rewards",
+                Task = task,
+                Success = false,
+                ItemsCompleted = 0,
+                ItemsTotal = 1,
+                Error = ex.Message,
+                StartedAt = startedAt,
+                CompletedAt = DateTimeOffset.UtcNow,
+            });
+            await _db.SaveChangesAsync(ct);
+        }
+    }
+
     public async Task RunDailyActivitiesAsync(CancellationToken ct = default)
     {
         const string task = "daily-activities";
@@ -51,9 +113,12 @@ public sealed class AutomationJob
             var success = root.TryGetProperty("success", out var s) && s.GetBoolean();
             var processed = root.TryGetProperty("completed", out var c) ? c.GetInt32() : 0;
             var logLines = root.TryGetProperty("log", out var lg) ? lg.ToString() : null;
+            int? pointsBefore = root.TryGetProperty("pointsBefore", out var pb) && pb.ValueKind == JsonValueKind.Number
+                ? pb.GetInt32() : null;
 
-            int? pointsAfter = null;
-            if (logLines != null)
+            int? pointsAfter = root.TryGetProperty("pointsAfter", out var pa) && pa.ValueKind == JsonValueKind.Number
+                ? pa.GetInt32() : null;
+            if (pointsAfter == null && logLines != null)
             {
                 var m = System.Text.RegularExpressions.Regex.Match(logLines, @"Points balance:\s*([\d,]+)");
                 if (m.Success) pointsAfter = int.Parse(m.Groups[1].Value.Replace(",", ""));
@@ -67,6 +132,7 @@ public sealed class AutomationJob
                 Success = success,
                 ItemsCompleted = processed,
                 ItemsTotal = processed,
+                PointsBefore = pointsBefore,
                 PointsAfter = pointsAfter,
                 LogOutput = logLines,
                 StartedAt = startedAt,
@@ -124,9 +190,12 @@ public sealed class AutomationJob
             var success = root.TryGetProperty("success", out var s) && s.GetBoolean();
             var searches = root.TryGetProperty("searches", out var sc) ? sc.GetInt32() : 0;
             var logLines = root.TryGetProperty("log", out var lg) ? lg.ToString() : null;
+            int? pointsBefore = root.TryGetProperty("pointsBefore", out var pb) && pb.ValueKind == JsonValueKind.Number
+                ? pb.GetInt32() : null;
 
-            int? pointsAfter = null;
-            if (logLines != null)
+            int? pointsAfter = root.TryGetProperty("pointsAfter", out var pa) && pa.ValueKind == JsonValueKind.Number
+                ? pa.GetInt32() : null;
+            if (pointsAfter == null && logLines != null)
             {
                 var m = System.Text.RegularExpressions.Regex.Match(logLines, @"Points balance:\s*([\d,]+)");
                 if (m.Success) pointsAfter = int.Parse(m.Groups[1].Value.Replace(",", ""));
@@ -140,6 +209,7 @@ public sealed class AutomationJob
                 Success = success,
                 ItemsCompleted = searches,
                 ItemsTotal = searchCount,
+                PointsBefore = pointsBefore,
                 PointsAfter = pointsAfter,
                 LogOutput = logLines,
                 StartedAt = startedAt,

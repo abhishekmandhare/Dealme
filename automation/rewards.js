@@ -84,6 +84,10 @@ async function runSearches({ count, minD, maxD, userAgent, viewport, label, chan
     push(`Warning: Could not check login status: ${e.message}`)
   }
 
+  // Capture balance before we start so the API can record an accurate pointsBefore.
+  const pointsBefore = await readPointsBalance(page)
+  if (pointsBefore != null) push(`Points before: ${pointsBefore.toLocaleString()}`)
+
   const queries = getRandomQueries(count)
   let completed = 0
 
@@ -125,7 +129,7 @@ async function runSearches({ count, minD, maxD, userAgent, viewport, label, chan
   await context.close()
   push(`Done. Completed ${completed}/${count} ${label} searches.`)
 
-  return { success: true, searches: completed, log }
+  return { success: true, searches: completed, pointsBefore, pointsAfter: balance, log }
 }
 
 // ── Daily Activities ───────────────────────────────────────────────────────
@@ -208,6 +212,166 @@ async function collectActivityUrls(page) {
   })
 }
 
+// ── Redemption ─────────────────────────────────────────────────────────────
+// Spend earned points on a gift card. Defensive: refuses to proceed if the
+// balance is too low, logs every step, and never retries (redemption can't
+// be undone).
+
+// Point costs for AU Microsoft Rewards (approximate — Microsoft adjusts these).
+// Keyed as "brand:denomination".
+const REDEMPTION_COSTS = {
+  'amazon:2': 2700,
+  'amazon:5': 6500,
+  'amazon:10': 13000,
+}
+
+export async function runRedemption({ brand = 'amazon', denomination = 2, dryRun = false } = {}) {
+  const log = []
+  const push = (msg) => { console.log(msg); log.push(msg) }
+  const key = `${brand.toLowerCase()}:${denomination}`
+  const expectedCost = REDEMPTION_COSTS[key]
+
+  push(`Starting redemption: ${brand} $${denomination} (dryRun=${dryRun})`)
+
+  if (!expectedCost) {
+    push(`ERROR: Unsupported brand/denomination combo: ${key}`)
+    return { success: false, error: `Unsupported: ${key}`, log }
+  }
+
+  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
+    headless: false,
+    channel: 'msedge',
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
+    ],
+    viewport: { width: 1366, height: 768 },
+    locale: 'en-AU',
+    timezoneId: 'Australia/Sydney',
+  })
+
+  const page = context.pages()[0] || await context.newPage()
+
+  try {
+    // Login check
+    await page.goto('https://www.bing.com/', { waitUntil: 'domcontentloaded', timeout: 15000 })
+    await sleep(1500)
+    const signInEl = await page.$('#id_a')
+    if (signInEl && await signInEl.isVisible()) {
+      push('ERROR: Not logged in. Run the login flow first.')
+      await context.close()
+      return { success: false, error: 'not_logged_in', log }
+    }
+
+    // Balance gate
+    const pointsBefore = await readPointsBalance(page)
+    push(`Balance: ${pointsBefore ?? 'unknown'} pts (need ≥ ${expectedCost})`)
+    if (pointsBefore == null) {
+      await context.close()
+      return { success: false, error: 'could_not_read_balance', log }
+    }
+    if (pointsBefore < expectedCost) {
+      push(`ABORT: insufficient balance (${pointsBefore} < ${expectedCost})`)
+      await context.close()
+      return { success: false, error: 'insufficient_balance', pointsBefore, expectedCost, log }
+    }
+
+    // Navigate to the redemption catalog.
+    await page.goto('https://rewards.bing.com/redeem', { waitUntil: 'domcontentloaded', timeout: 30000 })
+    await sleep(5000)
+
+    // Find the tile whose visible text contains both the brand and the $X denomination.
+    const tile = await page.evaluate(({ brand, denom }) => {
+      const needleBrand = brand.toLowerCase()
+      const needlePrice = `$${denom}`
+      const candidates = [...document.querySelectorAll('a[href], [role="link"], [role="button"], button')]
+      for (const el of candidates) {
+        const text = (el.innerText || '').toLowerCase()
+        if (text.includes(needleBrand) && text.includes(needlePrice)) {
+          const rect = el.getBoundingClientRect()
+          if (rect.width === 0 || rect.height === 0) continue
+          el.scrollIntoView({ block: 'center', behavior: 'instant' })
+          return {
+            href: el.tagName === 'A' ? el.href : null,
+            text: el.innerText.slice(0, 120),
+            rect: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+          }
+        }
+      }
+      return null
+    }, { brand, denom: denomination })
+
+    if (!tile) {
+      push(`ERROR: Could not find "${brand} $${denomination}" tile on redeem page.`)
+      await context.close()
+      return { success: false, error: 'tile_not_found', log }
+    }
+    push(`Matched tile: ${tile.text.replace(/\s+/g, ' ')}`)
+
+    if (dryRun) {
+      push('DRY RUN — stopping before confirmation click')
+      await context.close()
+      return { success: true, dryRun: true, matched: tile.text, pointsBefore, log }
+    }
+
+    // Open the tile's detail page
+    if (tile.href) {
+      await page.goto(tile.href, { waitUntil: 'domcontentloaded', timeout: 15000 })
+    } else {
+      await page.mouse.click(tile.rect.x, tile.rect.y)
+      await page.waitForLoadState('domcontentloaded', { timeout: 15000 })
+    }
+    await sleep(3500)
+
+    // Click Redeem on the detail page. Try multiple common labels.
+    const redeemClicked = await tryClickFirst(page, [
+      'button:has-text("Redeem")',
+      'a:has-text("Redeem")',
+      'button[aria-label*="Redeem" i]',
+    ])
+    if (!redeemClicked) {
+      push('ERROR: Could not find Redeem button on detail page')
+      await context.close()
+      return { success: false, error: 'redeem_button_missing', log }
+    }
+    push('Clicked Redeem')
+    await sleep(3000)
+
+    // Optional confirmation dialog
+    await tryClickFirst(page, [
+      'button:has-text("Confirm")',
+      'button:has-text("Yes")',
+      'button:has-text("Continue")',
+    ])
+    await sleep(5000)
+
+    // Balance should have dropped by ~expectedCost.
+    const pointsAfter = await readPointsBalance(page)
+    push(`Balance after: ${pointsAfter ?? 'unknown'}`)
+
+    const spent = (pointsBefore != null && pointsAfter != null) ? pointsBefore - pointsAfter : null
+    const looksOk = spent != null && spent >= expectedCost - 50 && spent <= expectedCost + 50
+
+    await context.close()
+    push(`Done. spent≈${spent} (expected ${expectedCost}) — ${looksOk ? 'OK' : 'UNVERIFIED'}`)
+
+    return {
+      success: looksOk,
+      brand,
+      denomination,
+      pointsBefore,
+      pointsAfter,
+      pointsSpent: spent,
+      log,
+    }
+  } catch (e) {
+    push(`ERROR: ${e.message}`)
+    await context.close().catch(() => {})
+    return { success: false, error: e.message, log }
+  }
+}
+
 export async function runDailyActivities({ maxActivities } = {}) {
   const limit = maxActivities ?? parseInt(process.env.DAILY_ACTIVITIES_LIMIT || '10', 10)
   const log = []
@@ -230,6 +394,7 @@ export async function runDailyActivities({ maxActivities } = {}) {
 
   const page = context.pages()[0] || await context.newPage()
   let completed = 0
+  let pointsBefore = null
 
   try {
     await page.goto('https://www.bing.com/', { waitUntil: 'domcontentloaded', timeout: 15000 })
@@ -247,8 +412,8 @@ export async function runDailyActivities({ maxActivities } = {}) {
     const nameText = nameEl ? (await nameEl.textContent()).trim() : ''
     push(nameText ? `Logged in as: ${nameText}` : 'Logged in')
 
-    await page.goto('https://rewards.bing.com/', { waitUntil: 'networkidle', timeout: 30000 })
-    await sleep(3500)
+    pointsBefore = await readPointsBalance(page)
+    if (pointsBefore != null) push(`Points before: ${pointsBefore.toLocaleString()}`)
 
     const urls = await collectActivityUrls(page)
     push(`Found ${urls.length} candidate activity tiles`)
@@ -275,7 +440,7 @@ export async function runDailyActivities({ maxActivities } = {}) {
 
   await context.close()
   push(`Done. Processed ${completed} activities.`)
-  return { success: true, completed, log }
+  return { success: true, completed, pointsBefore, pointsAfter: balance, log }
 }
 
 export async function runBingSearches({ searchCount, minDelay, maxDelay } = {}) {

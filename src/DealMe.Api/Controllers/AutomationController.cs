@@ -4,6 +4,7 @@ using System.Text.Json;
 using DealMe.Core.Domain.Entities;
 using DealMe.Infrastructure.Jobs;
 using DealMe.Infrastructure.Persistence;
+using DealMe.Infrastructure.Services;
 using Hangfire;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -71,7 +72,7 @@ public class AutomationController : ControllerBase
                         id = "bing-searches",
                         name = "Bing Searches (Desktop)",
                         description = $"Performs up to {msConfig.SearchCount} desktop searches on Bing to earn ~150 points per day.",
-                        schedule = CronToAest(msConfig.CronSchedule),
+                        schedule = AutomationMath.CronToAest(msConfig.CronSchedule),
                         maxPointsPerDay = 150,
                     },
                     new
@@ -79,7 +80,7 @@ public class AutomationController : ControllerBase
                         id = "bing-searches-mobile",
                         name = "Bing Searches (Mobile)",
                         description = $"Performs up to {msConfig.MobileSearchCount} mobile searches using an Edge iOS user agent to earn ~100 points per day.",
-                        schedule = CronToAest(OffsetCron(msConfig.CronSchedule, minutesOffset: 30)),
+                        schedule = AutomationMath.CronToAest(AutomationMath.OffsetCron(msConfig.CronSchedule, minutesOffset: 30)),
                         maxPointsPerDay = 100,
                     },
                     new
@@ -87,8 +88,16 @@ public class AutomationController : ControllerBase
                         id = "daily-activities",
                         name = "Daily Activities",
                         description = "Clicks through the Daily Set and More Activities tiles on the rewards dashboard (quizzes, polls, article-reads) to earn ~60–100 points per day.",
-                        schedule = CronToAest(OffsetCron(msConfig.CronSchedule, minutesOffset: 60)),
+                        schedule = AutomationMath.CronToAest(AutomationMath.OffsetCron(msConfig.CronSchedule, minutesOffset: 60)),
                         maxPointsPerDay = 80,
+                    },
+                    new
+                    {
+                        id = "redeem-amazon-5",
+                        name = "Redeem $5 Amazon Gift Card",
+                        description = "Spends 6,500 points to redeem a $5 Amazon AU gift card. Safely refuses to proceed if the balance is below the threshold.",
+                        schedule = "Manual only",
+                        maxPointsPerDay = 0,
                     },
                 },
                 loginRequired = true,
@@ -147,11 +156,11 @@ public class AutomationController : ControllerBase
                 _jobs.AddOrUpdate<AutomationJob>(
                     "bing-searches-mobile",
                     job => job.RunBingMobileSearchesAsync(CancellationToken.None),
-                    OffsetCron(body.CronSchedule, minutesOffset: 30));
+                    AutomationMath.OffsetCron(body.CronSchedule, minutesOffset: 30));
                 _jobs.AddOrUpdate<AutomationJob>(
                     "daily-activities",
                     job => job.RunDailyActivitiesAsync(CancellationToken.None),
-                    OffsetCron(body.CronSchedule, minutesOffset: 60));
+                    AutomationMath.OffsetCron(body.CronSchedule, minutesOffset: 60));
             }
             else
             {
@@ -201,8 +210,8 @@ public class AutomationController : ControllerBase
         // (or a proxy timeout) to kill the run mid-flight and leave the DB without a record.
         var ct = CancellationToken.None;
 
-        if (provider != "microsoft-rewards"
-            || (task != "bing-searches" && task != "bing-searches-mobile" && task != "daily-activities"))
+        var knownTasks = new[] { "bing-searches", "bing-searches-mobile", "daily-activities", "redeem-amazon-5" };
+        if (provider != "microsoft-rewards" || !knownTasks.Contains(task))
             return BadRequest("Unknown provider/task");
 
         var config = await _db.AutomationProviderConfigs.FindAsync([provider], ct)
@@ -210,26 +219,49 @@ public class AutomationController : ControllerBase
 
         var isMobile = task == "bing-searches-mobile";
         var isDailyActivities = task == "daily-activities";
-        var itemsTotal = isDailyActivities ? 0 : (isMobile ? config.MobileSearchCount : config.SearchCount);
+        var isRedemption = task.StartsWith("redeem-");
+        var itemsTotal = isRedemption ? 1 : (isDailyActivities ? 0 : (isMobile ? config.MobileSearchCount : config.SearchCount));
         var automationEndpoint = task switch
         {
             "bing-searches-mobile" => "/run/bing-searches-mobile",
             "daily-activities" => "/run/daily-activities",
+            "redeem-amazon-5" => "/run/redeem",
             _ => "/run/bing-searches",
         };
 
         var startedAt = DateTimeOffset.UtcNow;
 
+        AutomationRun NewRun(bool success, int completed, int total, int? pointsBefore, int? pointsAfter, string? error, string? log)
+            => new()
+            {
+                Id = Guid.NewGuid(),
+                Provider = provider,
+                Task = task,
+                Success = success,
+                ItemsCompleted = completed,
+                ItemsTotal = total,
+                PointsBefore = pointsBefore,
+                PointsAfter = pointsAfter,
+                Error = error,
+                LogOutput = log,
+                StartedAt = startedAt,
+                CompletedAt = DateTimeOffset.UtcNow,
+            };
+
         try
         {
-            var payload = isDailyActivities
-                ? "{}"
-                : JsonSerializer.Serialize(new
-                {
-                    searchCount = itemsTotal,
-                    minDelay = config.MinDelayMs,
-                    maxDelay = config.MaxDelayMs,
-                });
+            var payload = isRedemption
+                // Currently only one SKU is wired. When more are added, map task → (brand, denom).
+                ? JsonSerializer.Serialize(new { brand = "amazon", denomination = 5, dryRun = false })
+                : isDailyActivities
+                    ? "{}"
+                    : JsonSerializer.Serialize(new
+                    {
+                        searchCount = itemsTotal,
+                        minDelay = config.MinDelayMs,
+                        maxDelay = config.MaxDelayMs,
+                    });
+
             var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
             var resp = await _http.PostAsync($"{_automationUrl}{automationEndpoint}", content, ct);
             var json = await resp.Content.ReadAsStringAsync(ct);
@@ -238,36 +270,29 @@ public class AutomationController : ControllerBase
             var root = doc.RootElement;
 
             var success = root.TryGetProperty("success", out var s) && s.GetBoolean();
-            // Searches return "searches"; daily-activities returns "completed".
-            var completedCount = isDailyActivities
-                ? (root.TryGetProperty("completed", out var cc) ? cc.GetInt32() : 0)
-                : (root.TryGetProperty("searches", out var sc) ? sc.GetInt32() : 0);
+            // Searches return "searches"; daily-activities returns "completed"; redemption returns 1 on success.
+            var completedCount = isRedemption
+                ? (success ? 1 : 0)
+                : isDailyActivities
+                    ? (root.TryGetProperty("completed", out var cc) ? cc.GetInt32() : 0)
+                    : (root.TryGetProperty("searches", out var sc) ? sc.GetInt32() : 0);
             var logLines = root.TryGetProperty("log", out var lg) ? lg.ToString() : null;
             var error = !success && root.TryGetProperty("error", out var err) ? err.GetString() : null;
+            int? pointsBefore = root.TryGetProperty("pointsBefore", out var pb) && pb.ValueKind == JsonValueKind.Number
+                ? pb.GetInt32() : null;
+            int? pointsAfter = root.TryGetProperty("pointsAfter", out var pa) && pa.ValueKind == JsonValueKind.Number
+                ? pa.GetInt32() : null;
 
-            int? pointsAfter = null;
-            if (logLines != null)
+            // Older automation responses only included the balance in the log text.
+            if (pointsAfter == null && logLines != null)
             {
-                var pointsMatch = System.Text.RegularExpressions.Regex.Match(
-                    logLines, @"Points balance:\s*([\d,]+)");
-                if (pointsMatch.Success)
-                    pointsAfter = int.Parse(pointsMatch.Groups[1].Value.Replace(",", ""));
+                var match = System.Text.RegularExpressions.Regex.Match(logLines, @"Points balance:\s*([\d,]+)");
+                if (match.Success)
+                    pointsAfter = int.Parse(match.Groups[1].Value.Replace(",", ""));
             }
 
-            var run = new AutomationRun
-            {
-                Id = Guid.NewGuid(),
-                Provider = provider,
-                Task = task,
-                Success = success,
-                ItemsCompleted = completedCount,
-                ItemsTotal = isDailyActivities ? completedCount : itemsTotal,
-                PointsAfter = pointsAfter,
-                Error = error,
-                LogOutput = logLines,
-                StartedAt = startedAt,
-                CompletedAt = DateTimeOffset.UtcNow,
-            };
+            var run = NewRun(success, completedCount, isDailyActivities ? completedCount : itemsTotal,
+                pointsBefore, pointsAfter, error, logLines);
             _db.AutomationRuns.Add(run);
             await _db.SaveChangesAsync(ct);
 
@@ -279,22 +304,9 @@ public class AutomationController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Automation {Provider}/{Task} failed", provider, task);
-
-            var run = new AutomationRun
-            {
-                Id = Guid.NewGuid(),
-                Provider = provider,
-                Task = task,
-                Success = false,
-                ItemsCompleted = 0,
-                ItemsTotal = itemsTotal,
-                Error = ex.Message,
-                StartedAt = startedAt,
-                CompletedAt = DateTimeOffset.UtcNow,
-            };
+            var run = NewRun(false, 0, itemsTotal, null, null, ex.Message, null);
             _db.AutomationRuns.Add(run);
             await _db.SaveChangesAsync(ct);
-
             return StatusCode(502, new { error = ex.Message });
         }
     }
@@ -308,58 +320,27 @@ public class AutomationController : ControllerBase
         var weekAgo = now.AddDays(-7);
         var monthAgo = now.AddDays(-30);
 
-        var runs = await _db.AutomationRuns
-            .Where(r => r.Provider == provider && r.StartedAt >= monthAgo)
-            .OrderByDescending(r => r.StartedAt)
+        // Load all runs for this provider — we need data from before the
+        // month window to establish the baseline balance (delta-based math).
+        var allRuns = await _db.AutomationRuns
+            .Where(r => r.Provider == provider)
+            .OrderBy(r => r.StartedAt)
             .ToListAsync(ct);
 
+        var runs = allRuns.Where(r => r.StartedAt >= monthAgo).ToList();
         var todayRuns = runs.Where(r => r.StartedAt.Date == today).ToList();
         var weekRuns = runs.Where(r => r.StartedAt >= weekAgo).ToList();
 
-        var todayPoints = todayRuns.Where(r => r.Success).Sum(r => r.ItemsCompleted * 5);
-        var weekPoints = weekRuns.Where(r => r.Success).Sum(r => r.ItemsCompleted * 5);
-        var monthPoints = runs.Where(r => r.Success).Sum(r => r.ItemsCompleted * 5);
-        var latestPoints = runs.FirstOrDefault(r => r.PointsAfter.HasValue)?.PointsAfter;
+        var latestPoints = allRuns.LastOrDefault(r => r.PointsAfter.HasValue)?.PointsAfter;
 
         return Ok(new
         {
             currentPoints = latestPoints,
-            today = new { runs = todayRuns.Count, pointsEstimate = todayPoints, success = todayRuns.Count(r => r.Success) },
-            week = new { runs = weekRuns.Count, pointsEstimate = weekPoints, success = weekRuns.Count(r => r.Success) },
-            month = new { runs = runs.Count, pointsEstimate = monthPoints, success = runs.Count(r => r.Success) },
+            today = new { runs = todayRuns.Count, pointsEarned = AutomationMath.EarnedInWindow(allRuns, today), success = todayRuns.Count(r => r.Success) },
+            week = new { runs = weekRuns.Count, pointsEarned = AutomationMath.EarnedInWindow(allRuns, weekAgo), success = weekRuns.Count(r => r.Success) },
+            month = new { runs = runs.Count, pointsEarned = AutomationMath.EarnedInWindow(allRuns, monthAgo), success = runs.Count(r => r.Success) },
             totalRuns = runs.Count,
         });
     }
 
-    /// <summary>Shift a simple "M H * * *" daily cron by N minutes. Falls back to input if unparseable.</summary>
-    private static string OffsetCron(string cron, int minutesOffset)
-    {
-        var parts = cron.Split(' ');
-        if (parts.Length == 5
-            && int.TryParse(parts[0], out var min)
-            && int.TryParse(parts[1], out var hour))
-        {
-            var total = (hour * 60 + min + minutesOffset) % (24 * 60);
-            if (total < 0) total += 24 * 60;
-            return $"{total % 60} {total / 60} {parts[2]} {parts[3]} {parts[4]}";
-        }
-        return cron;
-    }
-
-    private static string CronToAest(string cron)
-    {
-        // Convert simple "M H * * *" daily cron (UTC) to a human-readable AEST label
-        var parts = cron.Split(' ');
-        if (parts.Length == 5
-            && int.TryParse(parts[0], out var min)
-            && int.TryParse(parts[1], out var hourUtc)
-            && parts[2] == "*" && parts[3] == "*" && parts[4] == "*")
-        {
-            var hourAest = (hourUtc + 10) % 24;
-            var period = hourAest >= 12 ? "PM" : "AM";
-            var displayHour = hourAest % 12 == 0 ? 12 : hourAest % 12;
-            return $"Daily at {displayHour}:{min:D2} {period} AEST";
-        }
-        return $"Cron: {cron}";
-    }
 }

@@ -21,6 +21,10 @@ internal static class PriceParser
         new(@"now[:\s]+\$?([\d,]+(?:\.\d{1,2})?)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    // "Free" as a word — used to detect $0 deals (e.g. "Free - Game Name (Was $24.99)")
+    private static readonly Regex FreeRegex =
+        new(@"\bfree\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     internal static decimal? ExtractFirst(string text)
     {
         var m = PriceRegex.Match(text);
@@ -50,10 +54,22 @@ internal static class PriceParser
         if (nowMatch.Success)
             dealPrice = ParseAmount(nowMatch.Groups[1].Value);
 
-        // 4. Fall back to first dollar amount in title for deal price
+        // 4. Detect "Free" deals — if the word "free" appears in the title *before*
+        //    any dollar amount, it's a $0 deal. Must run before the first-dollar
+        //    fallback below, otherwise we'd grab the "was" price as the deal price
+        //    (e.g. "Free - Game (Was $24.99)" → $24.99 instead of $0).
+        if (dealPrice is null)
+        {
+            var freeMatch = FreeRegex.Match(title);
+            var firstDollarIdx = title.IndexOf('$');
+            if (freeMatch.Success && (firstDollarIdx < 0 || freeMatch.Index < firstDollarIdx))
+                dealPrice = 0m;
+        }
+
+        // 5. Fall back to first dollar amount in title for deal price
         dealPrice ??= ExtractFirst(title);
 
-        // 5. Calculate discount % from prices if not explicit
+        // 6. Calculate discount % from prices if not explicit
         if (discountPercent is null && dealPrice.HasValue && originalPrice.HasValue && originalPrice > 0)
         {
             var saving = originalPrice.Value - dealPrice.Value;
@@ -61,7 +77,7 @@ internal static class PriceParser
                 discountPercent = (int)Math.Round(saving / originalPrice.Value * 100);
         }
 
-        // 6. Calculate original from deal price + discount % if still missing
+        // 7. Calculate original from deal price + discount % if still missing
         if (originalPrice is null && dealPrice.HasValue && discountPercent.HasValue && discountPercent > 0)
             originalPrice = Math.Round(dealPrice.Value / (1 - discountPercent.Value / 100m), 2);
 

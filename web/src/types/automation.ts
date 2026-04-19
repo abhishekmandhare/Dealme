@@ -33,9 +33,9 @@ export interface AutomationRun {
 
 export interface AutomationStats {
   currentPoints: number | null
-  today: { runs: number; pointsEstimate: number; success: number }
-  week: { runs: number; pointsEstimate: number; success: number }
-  month: { runs: number; pointsEstimate: number; success: number }
+  today: { runs: number; pointsEarned: number | null; success: number }
+  week: { runs: number; pointsEarned: number | null; success: number }
+  month: { runs: number; pointsEarned: number | null; success: number }
   totalRuns: number
 }
 

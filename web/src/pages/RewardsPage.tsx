@@ -364,16 +364,16 @@ function ProviderDetail({ provider, onBack }: { provider: AutomationProvider; on
             <span className="rw-stat-label">Current Points</span>
           </div>
           <div className="rw-stat-card">
-            <span className="rw-stat-value">~{stats.today.pointsEstimate}</span>
-            <span className="rw-stat-label">Today</span>
+            <span className="rw-stat-value">{stats.today.pointsEarned?.toLocaleString() ?? '—'}</span>
+            <span className="rw-stat-label">Earned Today</span>
           </div>
           <div className="rw-stat-card">
-            <span className="rw-stat-value">~{stats.week.pointsEstimate}</span>
-            <span className="rw-stat-label">This Week</span>
+            <span className="rw-stat-value">{stats.week.pointsEarned?.toLocaleString() ?? '—'}</span>
+            <span className="rw-stat-label">Earned This Week</span>
           </div>
           <div className="rw-stat-card">
-            <span className="rw-stat-value">~{stats.month.pointsEstimate}</span>
-            <span className="rw-stat-label">This Month</span>
+            <span className="rw-stat-value">{stats.month.pointsEarned?.toLocaleString() ?? '—'}</span>
+            <span className="rw-stat-label">Earned This Month</span>
           </div>
         </div>
       )}
