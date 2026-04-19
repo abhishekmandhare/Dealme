@@ -31,6 +31,12 @@ public abstract class RssDealAdapter : IIntegrationAdapter
     public abstract string AdapterName { get; }
     protected abstract string FeedUrl { get; }
 
+    /// <summary>
+    /// Override to classify this feed's items as a specific OpportunityType.
+    /// Defaults to Deal (with Cashback detection from title/categories).
+    /// </summary>
+    protected virtual OpportunityType DefaultType => OpportunityType.Deal;
+
     public async Task<AdapterResult> FetchAsync(CancellationToken ct = default)
     {
         try
@@ -113,11 +119,19 @@ public abstract class RssDealAdapter : IIntegrationAdapter
         // Pricing — extract deal price, RRP, and discount %
         var (value, originalValue, discountPercent) = PriceParser.ExtractDealPricing(title, description);
 
-        // Type — cashback if any category says "cashback" or "% cashback" in title
-        var type = categories.Any(c => c.Equals("Cashback", StringComparison.OrdinalIgnoreCase))
+        // Type — subclass DefaultType wins (e.g. Competitions feed), otherwise detect Cashback.
+        OpportunityType type;
+        if (DefaultType != OpportunityType.Deal)
+        {
+            type = DefaultType;
+        }
+        else
+        {
+            type = categories.Any(c => c.Equals("Cashback", StringComparison.OrdinalIgnoreCase))
                    || title.Contains("cashback", StringComparison.OrdinalIgnoreCase)
-            ? OpportunityType.Cashback
-            : OpportunityType.Deal;
+                ? OpportunityType.Cashback
+                : OpportunityType.Deal;
+        }
 
         // pubDate → posted time (not expiry)
         var pubDate = item.Element("pubDate")?.Value;

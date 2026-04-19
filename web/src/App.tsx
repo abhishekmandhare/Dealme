@@ -3,15 +3,17 @@ import type { JSX } from 'react'
 import OpportunitiesPage from './pages/OpportunitiesPage'
 import PriceWatchesPage from './pages/PriceWatchesPage'
 import RewardsPage from './pages/RewardsPage'
+import CompetitionsPage from './pages/CompetitionsPage'
 import SettingsPage from './pages/SettingsPage'
 import { useTheme, type Theme } from './hooks/useTheme'
 
-type Page = 'opportunities' | 'price-watches' | 'rewards' | 'settings'
+type Page = 'opportunities' | 'price-watches' | 'rewards' | 'competitions' | 'settings'
 
 const pages: { id: Page; label: string }[] = [
   { id: 'opportunities', label: 'Opportunities' },
   { id: 'price-watches', label: 'Price Watches' },
   { id: 'rewards', label: 'Rewards' },
+  { id: 'competitions', label: 'Competitions' },
   { id: 'settings', label: 'Settings' },
 ]
 
@@ -100,6 +102,7 @@ export default function App() {
         {page === 'opportunities' && <OpportunitiesPage />}
         {page === 'price-watches' && <PriceWatchesPage />}
         {page === 'rewards' && <RewardsPage />}
+        {page === 'competitions' && <CompetitionsPage />}
         {page === 'settings' && <SettingsPage />}
       </main>
     </>

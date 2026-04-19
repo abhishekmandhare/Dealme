@@ -1,5 +1,6 @@
 import express from 'express'
 import { runBingSearches, runBingMobileSearches, runDailyActivities, runRedemption } from './rewards.js'
+import { runCompetitionEntry } from './competitions.js'
 
 const app = express()
 const PORT = parseInt(process.env.PORT || '3100', 10)
@@ -140,6 +141,39 @@ app.post('/run/redeem', async (req, res) => {
       task: 'redeem',
       success: false,
       error: e.message,
+      timestamp: new Date().toISOString(),
+    }
+    res.status(500).json(lastRun)
+  } finally {
+    running = false
+  }
+})
+
+app.post('/run/enter-competition', async (req, res) => {
+  if (running) {
+    return res.status(409).json({ error: 'Already running' })
+  }
+
+  const { url, email, firstName, lastName, postcode } = req.body || {}
+
+  running = true
+  try {
+    const result = await runCompetitionEntry({ url, email, firstName, lastName, postcode })
+    lastRun = {
+      task: 'enter-competition',
+      url,
+      status: result.status,
+      reason: result.reason ?? null,
+      timestamp: new Date().toISOString(),
+      log: result.log,
+    }
+    res.json(lastRun)
+  } catch (e) {
+    lastRun = {
+      task: 'enter-competition',
+      url,
+      status: 'failed',
+      reason: e.message,
       timestamp: new Date().toISOString(),
     }
     res.status(500).json(lastRun)

@@ -6,5 +6,6 @@ public enum OpportunityType : byte
     Cashback = 1,
     Bonus = 2,
     Rebate = 3,
-    PriceAlert = 4
+    PriceAlert = 4,
+    Competition = 5
 }

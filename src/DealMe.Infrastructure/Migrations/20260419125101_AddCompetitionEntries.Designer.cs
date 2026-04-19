@@ -3,6 +3,7 @@ using System;
 using DealMe.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DealMe.Infrastructure.Migrations
 {
     [DbContext(typeof(DealMeDbContext))]
-    partial class DealMeDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260419125101_AddCompetitionEntries")]
+    partial class AddCompetitionEntries
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.15");

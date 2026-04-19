@@ -15,6 +15,12 @@ services:
       - TIMEZONE=${TIMEZONE:-Australia/Melbourne}
       - SERPER_API_KEY=${SERPER_API_KEY:-}
       - AUTOMATION_URL=http://automation:3100
+      # Competition auto-entry — leave COMPETITION_EMAIL empty to disable the feature.
+      - COMPETITION_EMAIL=${COMPETITION_EMAIL:-}
+      - COMPETITION_FIRST_NAME=${COMPETITION_FIRST_NAME:-}
+      - COMPETITION_LAST_NAME=${COMPETITION_LAST_NAME:-}
+      - COMPETITION_POSTCODE=${COMPETITION_POSTCODE:-}
+      - COMPETITION_MAX_PER_RUN=${COMPETITION_MAX_PER_RUN:-5}
     volumes:
       - db-data:/data
     depends_on:

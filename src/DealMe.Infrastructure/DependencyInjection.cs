@@ -49,11 +49,15 @@ public static class DependencyInjection
         services.AddSingleton<PointHacksAdapter>(sp =>
             new PointHacksAdapter(sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(PointHacksAdapter)),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PointHacksAdapter>>()));
+        services.AddSingleton<OzBargainCompetitionsAdapter>(sp =>
+            new OzBargainCompetitionsAdapter(sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(OzBargainCompetitionsAdapter)),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<OzBargainCompetitionsAdapter>>()));
         services.AddSingleton<IIntegrationAdapter>(sp => sp.GetRequiredService<OzBargainAdapter>());
         services.AddSingleton<IIntegrationAdapter>(sp => sp.GetRequiredService<CheapiesAdapter>());
         services.AddSingleton<IIntegrationAdapter>(sp => sp.GetRequiredService<FrugalFeedsAdapter>());
         services.AddSingleton<IIntegrationAdapter>(sp => sp.GetRequiredService<ChangeDetectionAdapter>());
         services.AddSingleton<IIntegrationAdapter>(sp => sp.GetRequiredService<PointHacksAdapter>());
+        services.AddSingleton<IIntegrationAdapter>(sp => sp.GetRequiredService<OzBargainCompetitionsAdapter>());
 
         services.AddScoped<IPipelineService, PipelineService>();
         services.AddHttpClient<AppriseClient>();
@@ -67,6 +71,7 @@ public static class DependencyInjection
         services.AddScoped<Jobs.AdapterPollingJob>();
         services.AddScoped<Jobs.PriceWatchPollingJob>();
         services.AddScoped<Jobs.AutomationJob>();
+        services.AddScoped<Jobs.CompetitionEntryJob>();
         services.AddHttpClient("automation", c =>
         {
             c.Timeout = TimeSpan.FromMinutes(20);

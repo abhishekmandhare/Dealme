@@ -29,6 +29,7 @@ public class DealMeDbContext : DbContext
     public DbSet<NotificationChannel> NotificationChannels => Set<NotificationChannel>();
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
     public DbSet<AutomationProviderConfig> AutomationProviderConfigs => Set<AutomationProviderConfig>();
+    public DbSet<CompetitionEntry> CompetitionEntries => Set<CompetitionEntry>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -113,6 +114,22 @@ public class DealMeDbContext : DbContext
             e.Property(x => x.CronSchedule).HasMaxLength(100).IsRequired()
              .HasDefaultValue("0 21 * * *");
             e.Property(x => x.MobileSearchCount).HasDefaultValue(20);
+        });
+
+        mb.Entity<CompetitionEntry>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Title).HasMaxLength(500).IsRequired();
+            e.Property(x => x.CompetitionUrl).HasMaxLength(2048).IsRequired();
+            e.Property(x => x.SourceUrl).HasMaxLength(2048).IsRequired();
+            e.Property(x => x.Source).HasMaxLength(50).IsRequired();
+            e.Property(x => x.EmailUsed).HasMaxLength(256);
+            e.Property(x => x.Reason).HasMaxLength(200);
+            // One entry record per opportunity — prevents re-entering the same comp.
+            e.HasIndex(x => x.OpportunityId).IsUnique()
+             .HasDatabaseName("IX_CompEntry_OpportunityId");
+            e.HasIndex(x => new { x.Status, x.CreatedAt })
+             .HasDatabaseName("IX_CompEntry_Status_Created");
         });
     }
 }

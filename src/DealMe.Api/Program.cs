@@ -65,6 +65,16 @@ RecurringJob.AddOrUpdate<AdapterPollingJob>(
     job => job.RunAsync(AdapterNames.FrugalFeeds, CancellationToken.None),
     "*/10 * * * *");
 
+RecurringJob.AddOrUpdate<AdapterPollingJob>(
+    "ozbargain-competitions-poll",
+    job => job.RunAsync("ozbargain-competitions", CancellationToken.None),
+    "0 * * * *"); // hourly — competitions are lower volume than deals
+
+RecurringJob.AddOrUpdate<CompetitionEntryJob>(
+    "competitions-auto-enter",
+    job => job.RunAsync(CancellationToken.None),
+    "15 * * * *"); // hourly, 15 min after the poll so there's fresh data
+
 RecurringJob.AddOrUpdate<PriceWatchPollingJob>(
     "pricewatch-poll",
     job => job.RunAsync(CancellationToken.None),
