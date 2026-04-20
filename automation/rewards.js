@@ -153,7 +153,7 @@ async function tryClickFirst(page, selectors) {
 }
 
 async function handleActivityTab(page) {
-  await sleep(2500 + Math.random() * 1500)
+  await sleep(3000 + Math.random() * 1500)
 
   const answerSelectors = [
     'div.wk_Answer',
@@ -175,41 +175,104 @@ async function handleActivityTab(page) {
     'button[type="submit"]:not(:disabled)',
   ]
 
+  let interactions = 0
   for (let round = 0; round < 15; round++) {
     const clicked = await tryClickFirst(page, answerSelectors)
     if (!clicked) break
-    await sleep(1500 + Math.random() * 1200)
+    interactions++
+    await sleep(1800 + Math.random() * 1200)
     await tryClickFirst(page, nextSelectors)
-    await sleep(1200 + Math.random() * 800)
+    await sleep(1500 + Math.random() * 900)
   }
 
-  // Article-style tiles: just scroll to simulate reading.
-  await page.mouse.wheel(0, 500).catch(() => {})
-  await sleep(1500)
-  await page.mouse.wheel(0, 500).catch(() => {})
-  await sleep(1200)
+  // Article/search tiles: no interactive elements found. Simulate reading by
+  // dwelling for a realistic amount of time — MS tracks dwell on tiles where
+  // "visit and stay" IS the activity. 15-25s aligns with typical article scan.
+  if (interactions === 0) {
+    for (let i = 0; i < 4; i++) {
+      await page.mouse.wheel(0, 300 + Math.random() * 400).catch(() => {})
+      await sleep(3500 + Math.random() * 2500)
+    }
+  } else {
+    // Quiz completed — short scroll to "see results" and move on.
+    await page.mouse.wheel(0, 500).catch(() => {})
+    await sleep(2000)
+  }
+  return interactions
 }
 
-async function collectActivityUrls(page) {
-  return await page.evaluate(() => {
-    // Activity tiles on the dashboard link to either bing.com/search?...
-    // (quiz/poll triggered via search) or bing.com/rewardsapp/ pages.
-    // Completed tiles typically have a checkmark — we filter those out.
-    const result = new Set()
-    for (const a of document.querySelectorAll('a[href]')) {
-      const href = a.href
-      if (!href) continue
-      if (!/bing\.com\/(search|rewardsapp)/i.test(href)) continue
-      // Skip anchors that clearly look like completed or static nav links.
-      const wrapper = a.closest('[aria-label], [class]')
-      const aria = (wrapper?.getAttribute('aria-label') || '').toLowerCase()
-      if (aria.includes('complete')) continue
-      const hasCheckmark = !!a.querySelector('svg[class*="check" i], [class*="complete" i]')
-      if (hasCheckmark) continue
-      result.add(href)
+/**
+ * Click the tile AS A REAL USER would — from the dashboard — instead of
+ * extracting the URL and navigating directly. The dashboard's JS listens
+ * for tile clicks to mark activities as started; direct navigation bypasses
+ * that handler and MS's crediting engine treats the visit as out-of-band.
+ */
+async function clickDashboardTilesSequentially(context, page, limit, push) {
+  let processed = 0
+  // Track hrefs we've already clicked so we skip them on the next iteration.
+  // Dashboard doesn't visually update "completed" state fast enough to rely on.
+  const seenHrefs = new Set()
+
+  for (let i = 0; i < limit; i++) {
+    await page.goto('https://rewards.bing.com/', { waitUntil: 'domcontentloaded', timeout: 30000 })
+    await sleep(3500)
+
+    const tileInfo = await page.evaluate((seenList) => {
+      const seen = new Set(seenList)
+      const anchors = [...document.querySelectorAll('a[href*="bing.com"]')]
+      for (let idx = 0; idx < anchors.length; idx++) {
+        const a = anchors[idx]
+        const href = a.href
+        if (!href) continue
+        if (!/bing\.com\/(search|rewardsapp)/i.test(href)) continue
+        if (seen.has(href)) continue
+        const aria = (a.closest('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase()
+        if (aria.includes('complete')) continue
+        if (a.querySelector('[class*="check" i], [class*="complete" i]')) continue
+        const rect = a.getBoundingClientRect()
+        if (rect.width < 50 || rect.height < 50) continue
+        return { href, idx, label: (a.innerText || aria || href).slice(0, 80) }
+      }
+      return null
+    }, [...seenHrefs])
+
+    if (!tileInfo) {
+      push(`No more unclaimed tiles after ${processed}`)
+      break
     }
-    return [...result].slice(0, 15)
-  })
+
+    push(`Tile ${processed + 1}: ${tileInfo.label.replace(/\s+/g, ' ')}`)
+
+    try {
+      // Click the anchor in a way that fires the dashboard's JS handlers.
+      // The tile usually opens in a new tab — we wait for it.
+      const [newTab] = await Promise.all([
+        context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
+        page.evaluate((idx) => {
+          const a = document.querySelectorAll('a[href*="bing.com"]')[idx]
+          if (a) {
+            a.scrollIntoView({ block: 'center' })
+            a.click()
+          }
+        }, tileInfo.idx),
+      ])
+
+      // Some tiles open in the same tab instead of a new one.
+      const targetPage = newTab ?? page
+      await targetPage.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {})
+      const interactions = await handleActivityTab(targetPage)
+      push(`  → ${interactions} interactions`)
+      if (newTab && !newTab.isClosed()) await newTab.close().catch(() => {})
+      seenHrefs.add(tileInfo.href)
+      processed++
+      await sleep(2500 + Math.random() * 2000)
+    } catch (e) {
+      push(`  tile error: ${e.message}`)
+      seenHrefs.add(tileInfo.href)  // don't retry the same broken tile
+    }
+  }
+
+  return processed
 }
 
 // ── Redemption ─────────────────────────────────────────────────────────────
@@ -415,22 +478,7 @@ export async function runDailyActivities({ maxActivities } = {}) {
     pointsBefore = await readPointsBalance(page)
     if (pointsBefore != null) push(`Points before: ${pointsBefore.toLocaleString()}`)
 
-    const urls = await collectActivityUrls(page)
-    push(`Found ${urls.length} candidate activity tiles`)
-
-    for (const url of urls.slice(0, limit)) {
-      try {
-        const tab = await context.newPage()
-        await tab.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 })
-        await handleActivityTab(tab)
-        push(`[${completed + 1}] Processed: ${url.slice(0, 100)}`)
-        await tab.close()
-        completed++
-        await sleep(2000 + Math.random() * 2500)
-      } catch (e) {
-        push(`Activity skipped (${url.slice(0, 60)}): ${e.message}`)
-      }
-    }
+    completed = await clickDashboardTilesSequentially(context, page, limit, push)
   } catch (e) {
     push(`Error: ${e.message}`)
   }
