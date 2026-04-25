@@ -32,14 +32,10 @@ await page.goto('https://rewards.bing.com/', { waitUntil: 'domcontentloaded', ti
 await context.waitForEvent('close').catch(() => {})
 console.log('\nBrowser closed. Exporting cookies...')
 
-// Export cookies as decrypted JSON — avoids Mac keychain encryption issues
-const cookies = await context.cookies([
-  'https://www.bing.com',
-  'https://rewards.bing.com',
-  'https://login.microsoftonline.com',
-  'https://account.microsoft.com',
-])
-console.log(`Exported ${cookies.length} cookies.`)
+// Export ALL cookies (no URL filter) to capture .live.com SSO session tokens
+// and any other auth cookies that Microsoft may set during sign-in.
+const cookies = await context.cookies()
+console.log(`Exported ${cookies.length} cookies from domains: ${[...new Set(cookies.map(c => c.domain))].join(', ')}`)
 
 const cookiesFile = '/tmp/ms-rewards-cookies.json'
 fs.writeFileSync(cookiesFile, JSON.stringify(cookies, null, 2))

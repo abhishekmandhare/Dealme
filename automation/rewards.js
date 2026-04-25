@@ -59,18 +59,21 @@ async function runSearches({ count, minD, maxD, userAgent, viewport, label, chan
 
   push(`Starting Bing ${label} searches (count: ${count}${channel ? `, channel: ${channel}` : ''})`)
 
-  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
-    // Headful inside xvfb — Bing's bot detection checks real rendering signals.
+  // Use a non-persistent context so Edge and Chromium don't share and corrupt
+  // the same profile directory. Auth comes entirely from injected cookies.
+  const browser = await chromium.launch({
     headless: false,
-    // channel='msedge' launches the real Edge binary, which unlocks the Edge
-    // browser bonus on Microsoft Rewards. Omit userAgent in that case so Edge
-    // sends its genuine UA (and matching Sec-CH-UA client hints).
     channel,
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
       '--disable-dev-shm-usage',
+      '--no-first-run',
+      '--disable-sync',
+      '--no-default-browser-check',
     ],
+  })
+  const context = await browser.newContext({
     userAgent,
     viewport,
     locale: 'en-AU',
@@ -79,11 +82,11 @@ async function runSearches({ count, minD, maxD, userAgent, viewport, label, chan
 
   await injectSavedCookies(context)
 
-  const page = context.pages()[0] || await context.newPage()
+  const page = await context.newPage()
 
   try {
     await page.goto('https://www.bing.com/', { waitUntil: 'domcontentloaded', timeout: 15000 })
-    await sleep(2000)
+    await sleep(3000)
 
     // Desktop shows #id_n (username); mobile shows #id_s (account icon) or hides #id_a (sign-in).
     // We're logged OUT if the sign-in link (#id_a) is visible.
@@ -91,8 +94,11 @@ async function runSearches({ count, minD, maxD, userAgent, viewport, label, chan
     const signInVisible = signInEl ? await signInEl.isVisible() : false
 
     if (signInVisible) {
+      // Save a screenshot to /tmp for debugging login failures
+      await page.screenshot({ path: '/tmp/bing-login-check.png' }).catch(() => {})
       push('ERROR: Not logged in. Run the login flow first.')
       await context.close()
+      await browser.close()
       return { success: false, searches: 0, log }
     }
 
@@ -147,6 +153,7 @@ async function runSearches({ count, minD, maxD, userAgent, viewport, label, chan
   else push('Points balance: could not read (check rewards dashboard manually)')
 
   await context.close()
+  await browser.close()
   push(`Done. Completed ${completed}/${count} ${label} searches.`)
 
   return { success: true, searches: completed, pointsBefore, pointsAfter: balance, log }
@@ -321,14 +328,19 @@ export async function runRedemption({ brand = 'amazon', denomination = 2, dryRun
     return { success: false, error: `Unsupported: ${key}`, log }
   }
 
-  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
+  const browser = await chromium.launch({
     headless: false,
     channel: 'msedge',
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
       '--disable-dev-shm-usage',
+      '--no-first-run',
+      '--disable-sync',
+      '--no-default-browser-check',
     ],
+  })
+  const context = await browser.newContext({
     viewport: { width: 1366, height: 768 },
     locale: 'en-AU',
     timezoneId: 'Australia/Sydney',
@@ -336,7 +348,7 @@ export async function runRedemption({ brand = 'amazon', denomination = 2, dryRun
 
   await injectSavedCookies(context)
 
-  const page = context.pages()[0] || await context.newPage()
+  const page = await context.newPage()
 
   try {
     // Login check
@@ -346,6 +358,7 @@ export async function runRedemption({ brand = 'amazon', denomination = 2, dryRun
     if (signInEl && await signInEl.isVisible()) {
       push('ERROR: Not logged in. Run the login flow first.')
       await context.close()
+      await browser.close()
       return { success: false, error: 'not_logged_in', log }
     }
 
@@ -354,11 +367,13 @@ export async function runRedemption({ brand = 'amazon', denomination = 2, dryRun
     push(`Balance: ${pointsBefore ?? 'unknown'} pts (need ≥ ${expectedCost})`)
     if (pointsBefore == null) {
       await context.close()
+      await browser.close()
       return { success: false, error: 'could_not_read_balance', log }
     }
     if (pointsBefore < expectedCost) {
       push(`ABORT: insufficient balance (${pointsBefore} < ${expectedCost})`)
       await context.close()
+      await browser.close()
       return { success: false, error: 'insufficient_balance', pointsBefore, expectedCost, log }
     }
 
@@ -439,6 +454,7 @@ export async function runRedemption({ brand = 'amazon', denomination = 2, dryRun
     const looksOk = spent != null && spent >= expectedCost - 50 && spent <= expectedCost + 50
 
     await context.close()
+    await browser.close()
     push(`Done. spent≈${spent} (expected ${expectedCost}) — ${looksOk ? 'OK' : 'UNVERIFIED'}`)
 
     return {
@@ -453,6 +469,7 @@ export async function runRedemption({ brand = 'amazon', denomination = 2, dryRun
   } catch (e) {
     push(`ERROR: ${e.message}`)
     await context.close().catch(() => {})
+    await browser.close().catch(() => {})
     return { success: false, error: e.message, log }
   }
 }
@@ -464,7 +481,7 @@ export async function runDailyActivities({ maxActivities } = {}) {
 
   push(`Starting Microsoft Rewards daily activities (max: ${limit})`)
 
-  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
+  const browser = await chromium.launch({
     headless: false,
     channel: 'msedge',
     args: [
@@ -472,6 +489,8 @@ export async function runDailyActivities({ maxActivities } = {}) {
       '--no-sandbox',
       '--disable-dev-shm-usage',
     ],
+  })
+  const context = await browser.newContext({
     viewport: { width: 1366, height: 768 },
     locale: 'en-AU',
     timezoneId: 'Australia/Sydney',
@@ -479,7 +498,7 @@ export async function runDailyActivities({ maxActivities } = {}) {
 
   await injectSavedCookies(context)
 
-  const page = context.pages()[0] || await context.newPage()
+  const page = await context.newPage()
   let completed = 0
   let pointsBefore = null
 
@@ -492,6 +511,7 @@ export async function runDailyActivities({ maxActivities } = {}) {
     if (signInVisible) {
       push('ERROR: Not logged in. Run the login flow first.')
       await context.close()
+      await browser.close()
       return { success: false, completed: 0, log }
     }
 
@@ -511,6 +531,7 @@ export async function runDailyActivities({ maxActivities } = {}) {
   if (balance != null) push(`Points balance: ${balance.toLocaleString()}`)
 
   await context.close()
+  await browser.close()
   push(`Done. Processed ${completed} activities.`)
   return { success: true, completed, pointsBefore, pointsAfter: balance, log }
 }
