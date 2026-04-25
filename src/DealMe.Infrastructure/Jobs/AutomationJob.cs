@@ -162,6 +162,67 @@ public sealed class AutomationJob
         }
     }
 
+    public async Task RunGoogleSurveysAsync(CancellationToken ct = default)
+    {
+        const string task = "check-surveys";
+        _logger.LogInformation("AutomationJob: starting {Task}", task);
+        var startedAt = DateTimeOffset.UtcNow;
+
+        try
+        {
+            var resp = await _http.PostAsync(
+                $"{_automationUrl}/run/google-surveys",
+                new StringContent("{}", System.Text.Encoding.UTF8, "application/json"),
+                ct);
+            var json = await resp.Content.ReadAsStringAsync(ct);
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            var success   = root.TryGetProperty("success",   out var s)  && s.GetBoolean();
+            var completed = root.TryGetProperty("completed", out var c)   ? c.GetInt32() : 0;
+            var logLines  = root.TryGetProperty("log",       out var lg)  ? lg.ToString() : null;
+            int? credBefore = root.TryGetProperty("creditsBefore", out var cb) && cb.ValueKind == JsonValueKind.Number ? cb.GetInt32() : null;
+            int? credAfter  = root.TryGetProperty("creditsAfter",  out var ca) && ca.ValueKind == JsonValueKind.Number ? ca.GetInt32() : null;
+
+            _db.AutomationRuns.Add(new AutomationRun
+            {
+                Id             = Guid.NewGuid(),
+                Provider       = "google-opinion-rewards",
+                Task           = task,
+                Success        = success,
+                ItemsCompleted = completed,
+                ItemsTotal     = completed,
+                PointsBefore   = credBefore,
+                PointsAfter    = credAfter,
+                LogOutput      = logLines,
+                StartedAt      = startedAt,
+                CompletedAt    = DateTimeOffset.UtcNow,
+            });
+            await _db.SaveChangesAsync(ct);
+
+            _logger.LogInformation("AutomationJob: {Task} completed ({Completed} surveys, success={Success})",
+                task, completed, success);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AutomationJob: {Task} failed", task);
+            _db.AutomationRuns.Add(new AutomationRun
+            {
+                Id             = Guid.NewGuid(),
+                Provider       = "google-opinion-rewards",
+                Task           = task,
+                Success        = false,
+                ItemsCompleted = 0,
+                ItemsTotal     = 0,
+                Error          = ex.Message,
+                StartedAt      = startedAt,
+                CompletedAt    = DateTimeOffset.UtcNow,
+            });
+            await _db.SaveChangesAsync(ct);
+        }
+    }
+
     private async Task RunTaskAsync(string task, string endpoint, bool useDesktop, CancellationToken ct)
     {
         _logger.LogInformation("AutomationJob: starting {Task}", task);

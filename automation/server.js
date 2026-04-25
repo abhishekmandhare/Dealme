@@ -1,6 +1,7 @@
 import express from 'express'
 import { runBingSearches, runBingMobileSearches, runDailyActivities, runRedemption, openLoginBrowser } from './rewards.js'
 import { runCompetitionEntry } from './competitions.js'
+import { runGoogleSurveys } from './google-surveys.js'
 
 const app = express()
 const PORT = parseInt(process.env.PORT || '3100', 10)
@@ -174,6 +175,34 @@ app.post('/run/enter-competition', async (req, res) => {
       url,
       status: 'failed',
       reason: e.message,
+      timestamp: new Date().toISOString(),
+    }
+    res.status(500).json(lastRun)
+  } finally {
+    running = false
+  }
+})
+
+app.post('/run/google-surveys', async (req, res) => {
+  if (running) return res.status(409).json({ error: 'Already running' })
+  running = true
+  try {
+    const result = await runGoogleSurveys()
+    lastRun = {
+      task: 'google-surveys',
+      success: result.success,
+      completed: result.completed,
+      creditsBefore: result.creditsBefore ?? null,
+      creditsAfter: result.creditsAfter ?? null,
+      timestamp: new Date().toISOString(),
+      log: result.log,
+    }
+    res.json(lastRun)
+  } catch (e) {
+    lastRun = {
+      task: 'google-surveys',
+      success: false,
+      error: e.message,
       timestamp: new Date().toISOString(),
     }
     res.status(500).json(lastRun)

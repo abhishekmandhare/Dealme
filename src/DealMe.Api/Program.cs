@@ -95,5 +95,10 @@ RecurringJob.AddOrUpdate<AutomationJob>(
     job => job.RunDailyActivitiesAsync(CancellationToken.None),
     "0 22 * * *"); // 60 min after desktop; runs after both search jobs so Bing has crediting windows
 
+RecurringJob.AddOrUpdate<AutomationJob>(
+    "google-surveys",
+    job => job.RunGoogleSurveysAsync(CancellationToken.None),
+    "0 */6 * * *"); // Every 6 hours — surveys arrive unpredictably so we poll frequently
+
 app.MapControllers();
 app.Run();

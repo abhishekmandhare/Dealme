@@ -58,8 +58,31 @@ public class AutomationController : ControllerBase
         var msConfig = configs.FirstOrDefault(c => c.ProviderId == "microsoft-rewards")
             ?? new AutomationProviderConfig { ProviderId = "microsoft-rewards" };
 
-        var providers = new[]
+        var gorLastRun = lastRuns.FirstOrDefault(r => r.Provider == "google-opinion-rewards");
+
+        var providers = new object[]
         {
+            new
+            {
+                id = "google-opinion-rewards",
+                name = "Google Opinion Rewards",
+                description = "Completes Google Opinion Rewards surveys automatically via an Android emulator, earning Google Play credit.",
+                tasks = new object[]
+                {
+                    new
+                    {
+                        id = "check-surveys",
+                        name = "Check & Complete Surveys",
+                        description = "Launches Google Opinion Rewards in the emulator, answers any available survey using Ollama (qwen2.5-coder:7b), and records the credit earned.",
+                        schedule = "Every 6 hours",
+                        maxPointsPerDay = 0,
+                    },
+                },
+                loginRequired = true,
+                loginInstructions = "Open http://<truenas-ip>:6080 (noVNC), install OpenGApps, sign into your Google account, then install Google Opinion Rewards from the Play Store.",
+                serviceHealthy,
+                lastRun = gorLastRun,
+            },
             new
             {
                 id = "microsoft-rewards",
@@ -210,9 +233,58 @@ public class AutomationController : ControllerBase
         // (or a proxy timeout) to kill the run mid-flight and leave the DB without a record.
         var ct = CancellationToken.None;
 
-        var knownTasks = new[] { "bing-searches", "bing-searches-mobile", "daily-activities", "redeem-amazon-5" };
-        if (provider != "microsoft-rewards" || !knownTasks.Contains(task))
+        var allowed = new Dictionary<string, string[]>
+        {
+            ["microsoft-rewards"]      = ["bing-searches", "bing-searches-mobile", "daily-activities", "redeem-amazon-5"],
+            ["google-opinion-rewards"] = ["check-surveys"],
+        };
+        if (!allowed.TryGetValue(provider, out var allowedTasks) || !allowedTasks.Contains(task))
             return BadRequest("Unknown provider/task");
+
+        // Google Opinion Rewards — delegate directly to the automation service
+        if (provider == "google-opinion-rewards")
+        {
+            var gorStart = DateTimeOffset.UtcNow;
+            try
+            {
+                var resp = await _http.PostAsync($"{_automationUrl}/run/google-surveys",
+                    new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), ct);
+                var json = await resp.Content.ReadAsStringAsync(ct);
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                var success   = root.TryGetProperty("success",   out var s) && s.GetBoolean();
+                var completed = root.TryGetProperty("completed", out var c) ? c.GetInt32() : 0;
+                var logLines  = root.TryGetProperty("log",       out var lg) ? lg.ToString() : null;
+                var error     = !success && root.TryGetProperty("error", out var err) ? err.GetString() : null;
+                int? credBefore = root.TryGetProperty("creditsBefore", out var cb) && cb.ValueKind == JsonValueKind.Number ? cb.GetInt32() : null;
+                int? credAfter  = root.TryGetProperty("creditsAfter",  out var ca) && ca.ValueKind == JsonValueKind.Number ? ca.GetInt32() : null;
+
+                var run = new AutomationRun
+                {
+                    Id = Guid.NewGuid(), Provider = provider, Task = task,
+                    Success = success, ItemsCompleted = completed, ItemsTotal = completed,
+                    PointsBefore = credBefore, PointsAfter = credAfter,
+                    Error = error, LogOutput = logLines,
+                    StartedAt = gorStart, CompletedAt = DateTimeOffset.UtcNow,
+                };
+                _db.AutomationRuns.Add(run);
+                await _db.SaveChangesAsync(ct);
+                return Ok(run);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Automation {Provider}/{Task} failed", provider, task);
+                var run = new AutomationRun
+                {
+                    Id = Guid.NewGuid(), Provider = provider, Task = task,
+                    Success = false, ItemsCompleted = 0, ItemsTotal = 0,
+                    Error = ex.Message, StartedAt = gorStart, CompletedAt = DateTimeOffset.UtcNow,
+                };
+                _db.AutomationRuns.Add(run);
+                await _db.SaveChangesAsync(ct);
+                return StatusCode(502, new { error = ex.Message });
+            }
+        }
 
         var config = await _db.AutomationProviderConfigs.FindAsync([provider], ct)
             ?? new AutomationProviderConfig { ProviderId = provider };

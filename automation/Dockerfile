@@ -7,7 +7,7 @@ WORKDIR /app
 # microsoft-edge-stable is installed so desktop searches can run under the
 # real Edge binary — Microsoft Rewards grants an extra bonus for Edge users.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        xvfb x11vnc ca-certificates curl gnupg \
+        xvfb x11vnc ca-certificates curl gnupg adb \
     && install -d -m 0755 /etc/apt/keyrings \
     && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
         | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg \

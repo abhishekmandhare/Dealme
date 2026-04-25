@@ -21,3 +21,13 @@ services:
     ports:
       - "3100:3100"
       - "5900:5900"
+    depends_on: []  # android needs /dev/kvm — not available on Mac
+
+  # Stub: override the android service so it doesn't require /dev/kvm on Mac.
+  # Remove this block when deploying to TrueNAS.
+  android:
+    image: budtmo/docker-android:emulator_12.0
+    devices: []
+    environment:
+      - EMULATOR_DEVICE=Samsung Galaxy S10
+      - WEB_VNC=true

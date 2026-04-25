@@ -69,8 +69,34 @@ services:
       - SEARCH_COUNT=${SEARCH_COUNT:-33}
       - MIN_DELAY=${MIN_DELAY:-8000}
       - MAX_DELAY=${MAX_DELAY:-20000}
+      - ANDROID_HOST=android
+      - ANDROID_PORT=5555
+      - OLLAMA_URL=${OLLAMA_URL:-http://192.169.1.179:30068}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5-coder:7b}
+    depends_on:
+      - android
+
+  # Android emulator for Google Opinion Rewards automation.
+  # Requires /dev/kvm — only runs on TrueNAS (Linux with KVM enabled).
+  # First-time setup: open http://<host>:6080 (noVNC), install OpenGApps,
+  # sign into your Google account, and install Google Opinion Rewards.
+  android:
+    image: budtmo/docker-android:emulator_12.0
+    container_name: dealme-android
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kvm
+    ports:
+      - "6080:6080"
+    environment:
+      - EMULATOR_DEVICE=Samsung Galaxy S10
+      - WEB_VNC=true
+    volumes:
+      - android-data:/root
 
 volumes:
   db-data:
   cdio-data:
   automation-data:
+  android-data:
