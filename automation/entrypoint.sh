@@ -12,7 +12,7 @@ SCREEN="${XVFB_SCREEN:-1920x1080x24}"
 Xvfb ":${DISPLAY_NUM}" -screen 0 "${SCREEN}" -nolisten tcp &
 XVFB_PID=$!
 
-trap 'kill -TERM "$XVFB_PID" 2>/dev/null || true' EXIT INT TERM
+trap 'kill -TERM "$XVFB_PID" 2>/dev/null || true; kill -TERM "$X11VNC_PID" 2>/dev/null || true' EXIT INT TERM
 
 export DISPLAY=":${DISPLAY_NUM}"
 
@@ -24,5 +24,10 @@ rm -f "${PROFILE_DIR}"/Singleton* 2>/dev/null || true
 
 # Give Xvfb a moment to come up
 sleep 0.5
+
+# Expose the virtual display over VNC (port 5900) so the user can log in.
+# -nopw = no password (local dev only), -forever = don't exit after one client.
+x11vnc -display ":${DISPLAY_NUM}" -nopw -forever -shared -quiet &
+X11VNC_PID=$!
 
 exec node "$@"

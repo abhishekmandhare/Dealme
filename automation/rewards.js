@@ -1,6 +1,7 @@
 import { chromium } from 'playwright-extra'
 import stealth from 'puppeteer-extra-plugin-stealth'
 import { getRandomQueries } from './words.js'
+import fs from 'fs'
 
 chromium.use(stealth())
 
@@ -16,6 +17,18 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms))
 }
 
+const COOKIES_FILE = '/data/ms-cookies.json'
+
+async function injectSavedCookies(context) {
+  if (!fs.existsSync(COOKIES_FILE)) return
+  try {
+    const cookies = JSON.parse(fs.readFileSync(COOKIES_FILE, 'utf8'))
+    await context.addCookies(cookies)
+  } catch (e) {
+    console.log(`injectSavedCookies failed: ${e.message}`)
+  }
+}
+
 async function readPointsBalance(page) {
   try {
     // networkidle is unreliable on rewards.bing.com — Bing keeps long-lived
@@ -23,12 +36,17 @@ async function readPointsBalance(page) {
     // domcontentloaded and give the SPA time to hydrate the balance widget.
     await page.goto('https://rewards.bing.com/', { waitUntil: 'domcontentloaded', timeout: 30000 })
     await sleep(6000)
-    return await page.evaluate(() => {
+    const result = await page.evaluate(() => {
       const mainText = document.querySelector('main')?.innerText || document.body.innerText
-      // "Available points\n\n1,794" — anchored so we don't match redemption tiles.
-      const m = mainText.match(/Available points\s*[\n\s]+([\d,]+)/i)
-      return m ? parseInt(m[1].replace(/,/g, ''), 10) : null
+      // The SPA widget can render the number before or after the label depending
+      // on layout version: "Available points\n\n1,794" or "1,794\n\nAvailable points".
+      const after  = mainText.match(/Available points[\s\S]{0,20}?([\d,]{1,10})\s*(?:points)?/i)
+      const before = mainText.match(/([\d,]{1,10})\s*(?:points)?\s*[\s\S]{0,20}?Available points/i)
+      const raw = (after || before)?.[1]
+      return { value: raw ? parseInt(raw.replace(/,/g, ''), 10) : null, snippet: mainText.slice(0, 400) }
     })
+    if (result.value == null) console.log('readPointsBalance no match, page snippet:', result.snippet)
+    return result.value
   } catch (e) {
     console.log(`readPointsBalance failed: ${e.message}`)
     return null
@@ -58,6 +76,8 @@ async function runSearches({ count, minD, maxD, userAgent, viewport, label, chan
     locale: 'en-AU',
     timezoneId: 'Australia/Sydney',
   })
+
+  await injectSavedCookies(context)
 
   const page = context.pages()[0] || await context.newPage()
 
@@ -314,6 +334,8 @@ export async function runRedemption({ brand = 'amazon', denomination = 2, dryRun
     timezoneId: 'Australia/Sydney',
   })
 
+  await injectSavedCookies(context)
+
   const page = context.pages()[0] || await context.newPage()
 
   try {
@@ -455,6 +477,8 @@ export async function runDailyActivities({ maxActivities } = {}) {
     timezoneId: 'Australia/Sydney',
   })
 
+  await injectSavedCookies(context)
+
   const page = context.pages()[0] || await context.newPage()
   let completed = 0
   let pointsBefore = null
@@ -514,4 +538,60 @@ export async function runBingMobileSearches({ searchCount, minDelay, maxDelay } 
     viewport: { width: 390, height: 844 },
     label: 'mobile',
   })
+}
+
+// Opens Edge on the Microsoft login page and polls until the user completes
+// sign-in (up to 10 minutes). Connect to port 5900 via VNC to interact.
+export async function openLoginBrowser() {
+  const log = []
+  const push = (msg) => { console.log(msg); log.push(msg) }
+
+  push('Opening Edge for login — connect via VNC on port 5900 to sign in.')
+  push('Waiting up to 10 minutes for sign-in to complete...')
+
+  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
+    headless: false,
+    channel: 'msedge',
+    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-dev-shm-usage'],
+    viewport: { width: 1366, height: 768 },
+    locale: 'en-AU',
+  })
+
+  const page = context.pages()[0] || await context.newPage()
+
+  try {
+    await page.goto('https://rewards.bing.com/', { waitUntil: 'domcontentloaded', timeout: 30000 })
+
+    // Poll every 15 seconds for up to 10 minutes
+    const deadline = Date.now() + 10 * 60 * 1000
+    let loggedIn = false
+    while (Date.now() < deadline) {
+      await sleep(15000)
+      try {
+        await page.goto('https://www.bing.com/', { waitUntil: 'domcontentloaded', timeout: 15000 })
+        await sleep(2000)
+        const signInEl = await page.$('#id_a')
+        const signInVisible = signInEl ? await signInEl.isVisible() : false
+        if (!signInVisible) {
+          loggedIn = true
+          push('Sign-in detected — profile saved.')
+          break
+        }
+        push('Still waiting for sign-in...')
+      } catch (e) {
+        push(`Poll error: ${e.message}`)
+      }
+    }
+
+    await context.close()
+    if (loggedIn) {
+      return { success: true, message: 'Logged in successfully.', log }
+    } else {
+      return { success: false, message: 'Timed out waiting for sign-in.', log }
+    }
+  } catch (e) {
+    await context.close().catch(() => {})
+    push(`Error: ${e.message}`)
+    return { success: false, message: e.message, log }
+  }
 }

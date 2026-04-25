@@ -11,3 +11,13 @@ services:
       context: ../web
       dockerfile: Dockerfile
     image: dealme-web:local
+
+  changedetection:
+    ports: !reset
+      - "5010:5000"
+
+  automation:
+    platform: linux/amd64
+    ports:
+      - "3100:3100"
+      - "5900:5900"

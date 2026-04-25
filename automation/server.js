@@ -1,5 +1,5 @@
 import express from 'express'
-import { runBingSearches, runBingMobileSearches, runDailyActivities, runRedemption } from './rewards.js'
+import { runBingSearches, runBingMobileSearches, runDailyActivities, runRedemption, openLoginBrowser } from './rewards.js'
 import { runCompetitionEntry } from './competitions.js'
 
 const app = express()
@@ -177,6 +177,23 @@ app.post('/run/enter-competition', async (req, res) => {
       timestamp: new Date().toISOString(),
     }
     res.status(500).json(lastRun)
+  } finally {
+    running = false
+  }
+})
+
+// Opens Edge on the Microsoft login page and waits up to 10 min for sign-in.
+// Connect via VNC (port 5900) to complete the login interactively.
+app.post('/run/login', async (req, res) => {
+  if (running) {
+    return res.status(409).json({ error: 'Already running' })
+  }
+  running = true
+  try {
+    const result = await openLoginBrowser()
+    res.json({ success: result.success, message: result.message, log: result.log })
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message })
   } finally {
     running = false
   }
