@@ -488,6 +488,9 @@ export async function runDailyActivities({ maxActivities } = {}) {
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
       '--disable-dev-shm-usage',
+      '--no-first-run',
+      '--disable-sync',
+      '--no-default-browser-check',
     ],
   })
   const context = await browser.newContext({
@@ -504,7 +507,7 @@ export async function runDailyActivities({ maxActivities } = {}) {
 
   try {
     await page.goto('https://www.bing.com/', { waitUntil: 'domcontentloaded', timeout: 15000 })
-    await sleep(1500)
+    await sleep(3000)
 
     const signInEl = await page.$('#id_a')
     const signInVisible = signInEl ? await signInEl.isVisible() : false

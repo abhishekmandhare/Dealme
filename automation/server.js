@@ -210,3 +210,9 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 process.on('SIGTERM', () => {
   server.close(() => process.exit(0))
 })
+
+// Playwright-extra stealth plugin can throw unhandled rejections when a
+// browser crashes mid-run. Log them but keep the server alive.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection (ignored):', reason?.message ?? reason)
+})
