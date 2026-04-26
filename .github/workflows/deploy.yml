@@ -11,6 +11,7 @@ env:
   REGISTRY: ghcr.io
   API_IMAGE: ghcr.io/${{ github.repository_owner }}/dealme-api
   WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/dealme-web
+  AUTOMATION_IMAGE: ghcr.io/${{ github.repository_owner }}/dealme-automation
 
 jobs:
   deploy:
@@ -60,6 +61,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push Automation image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./automation
+          file: ./automation/Dockerfile
+          push: true
+          tags: |
+            ${{ env.AUTOMATION_IMAGE }}:latest
+            ${{ env.AUTOMATION_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@v3
         with:
@@ -90,6 +103,7 @@ jobs:
             truenas_admin@${{ secrets.TRUENAS_HOST }} \
             "sudo docker pull ${{ env.WEB_IMAGE }}:latest && \
              sudo docker pull ${{ env.API_IMAGE }}:latest && \
+             sudo docker pull ${{ env.AUTOMATION_IMAGE }}:latest && \
              sudo midclt call app.redeploy 'dealme'"
 
           echo "Deploy triggered. Images pulled and app redeployed."

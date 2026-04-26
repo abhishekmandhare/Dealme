@@ -41,7 +41,7 @@ Fetch → Normalise → Store (dedup + filter + score) → Notify
 
 - **Target**: TrueNAS server via Docker Compose
 - **CI/CD**: GitHub Actions → GHCR → Watchtower auto-pulls on TrueNAS
-- **SSH**: turenas_admin@192.169.1.179
+- **SSH**: truenas_admin@192.168.1.179
 - **Local dev**: `deploy/docker-compose.override.yml` builds images from source instead of pulling from GHCR
 
 ## Dev Commands
