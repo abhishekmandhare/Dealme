@@ -481,7 +481,9 @@ export async function runDailyActivities({ maxActivities } = {}) {
 
   push(`Starting Microsoft Rewards daily activities (max: ${limit})`)
 
-  const browser = await chromium.launch({
+  // Use the persistent profile (same as login.js) — cookie injection alone
+  // doesn't work for the rewards dashboard due to Microsoft SSO requirements.
+  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
     headless: false,
     channel: 'msedge',
     args: [
@@ -492,38 +494,24 @@ export async function runDailyActivities({ maxActivities } = {}) {
       '--disable-sync',
       '--no-default-browser-check',
     ],
-  })
-  const context = await browser.newContext({
     viewport: { width: 1366, height: 768 },
     locale: 'en-AU',
     timezoneId: 'Australia/Sydney',
   })
 
-  await injectSavedCookies(context)
-
-  const page = await context.newPage()
+  const page = context.pages()[0] || await context.newPage()
   let completed = 0
   let pointsBefore = null
 
   try {
-    await page.goto('https://www.bing.com/', { waitUntil: 'domcontentloaded', timeout: 15000 })
-    await sleep(3000)
-
-    const signInEl = await page.$('#id_a')
-    const signInVisible = signInEl ? await signInEl.isVisible() : false
-    if (signInVisible) {
+    pointsBefore = await readPointsBalance(page)
+    if (pointsBefore == null) {
+      await page.screenshot({ path: '/tmp/bing-login-check.png' }).catch(() => {})
       push('ERROR: Not logged in. Run the login flow first.')
       await context.close()
-      await browser.close()
       return { success: false, completed: 0, log }
     }
-
-    const nameEl = await page.$('#id_n')
-    const nameText = nameEl ? (await nameEl.textContent()).trim() : ''
-    push(nameText ? `Logged in as: ${nameText}` : 'Logged in')
-
-    pointsBefore = await readPointsBalance(page)
-    if (pointsBefore != null) push(`Points before: ${pointsBefore.toLocaleString()}`)
+    push(`Logged in. Points before: ${pointsBefore.toLocaleString()}`)
 
     completed = await clickDashboardTilesSequentially(context, page, limit, push)
   } catch (e) {
@@ -534,7 +522,6 @@ export async function runDailyActivities({ maxActivities } = {}) {
   if (balance != null) push(`Points balance: ${balance.toLocaleString()}`)
 
   await context.close()
-  await browser.close()
   push(`Done. Processed ${completed} activities.`)
   return { success: true, completed, pointsBefore, pointsAfter: balance, log }
 }
