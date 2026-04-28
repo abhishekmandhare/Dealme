@@ -46,33 +46,27 @@ Fetch → Normalise → Store (dedup + filter + score) → Notify
 
 ## Dev Commands
 
-Run these from the repo root unless stated.
+Run `make help` from the repo root to see all shortcuts. Common ones:
 
 ```bash
-# Build + run the local stack (from deploy/ dir)
-cd deploy && docker compose build && docker compose up -d
+make logs                # tail automation logs (-f)
+make runs                # show last 15 AutomationRuns with status + last log line
+make runs N=5            # show last 5
+make rebuild-automation  # rebuild + restart automation container
+make rebuild-api         # rebuild + restart API container
+make test-search         # trigger 2 desktop searches (direct, no DB record)
+make test-activities     # trigger daily activities
+make login               # open login browser (VNC port 5900)
+make truenas-logs        # tail automation logs on TrueNAS
+make truenas-runs        # show last 10 runs on TrueNAS
+make ci                  # show recent GitHub Actions runs
+make ssh                 # SSH into TrueNAS
 
-# Rebuild + restart a single service after editing
-docker compose build dealme-api && docker compose up -d dealme-api
-# Services: dealme-api | dealme-web | automation | changedetection | apprise
-
-# Run the test suite (36 tests on pure logic)
-dotnet test tests/DealMe.Tests/DealMe.Tests.csproj --nologo
-
-# Build any C# project quickly
+# Build any C# project quickly (not in Makefile — rarely needed)
 dotnet build src/DealMe.Api/DealMe.Api.csproj --nologo -v quiet
 
-# Tail automation logs (the Playwright runs live here)
-docker logs dealme-automation --tail 50
-
-# Trigger a task directly against the automation service (bypasses API + DB)
-curl -s -X POST http://localhost:3100/run/bing-searches -H "Content-Type: application/json" -d '{"searchCount":2}'
-
-# Trigger via the API (records to DB — prefer this for real testing)
-curl -s -X POST http://localhost:5001/api/automation/providers/microsoft-rewards/run/bing-searches
-
-# SQLite quick-peek (no sqlite3 in container — copy out + python)
-docker cp dealme-api:/data/dealme.db /tmp/d.db && python3 -c "import sqlite3;c=sqlite3.connect('/tmp/d.db');print(c.execute('SELECT COUNT(*) FROM AutomationRuns').fetchone())"
+# Full stack rebuild from scratch (from deploy/ dir)
+cd deploy && docker compose build && docker compose up -d
 ```
 
 ## Gotchas (Things That Bit Us)
