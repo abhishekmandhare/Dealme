@@ -59,60 +59,61 @@ async function runSearches({ count, minD, maxD, userAgent, viewport, label, chan
 
   push(`Starting Bing ${label} searches (count: ${count}${channel ? `, channel: ${channel}` : ''})`)
 
-  // Use a non-persistent context so Edge and Chromium don't share and corrupt
-  // the same profile directory. Auth comes entirely from injected cookies.
-  const browser = await chromium.launch({
-    headless: false,
-    channel,
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      '--no-first-run',
-      '--disable-sync',
-      '--no-default-browser-check',
-    ],
-  })
-  const context = await browser.newContext({
-    userAgent,
-    viewport,
-    locale: 'en-AU',
-    timezoneId: 'Australia/Sydney',
-  })
+  let context, browser
 
-  await injectSavedCookies(context)
-
-  const page = await context.newPage()
-
-  try {
-    await page.goto('https://www.bing.com/', { waitUntil: 'domcontentloaded', timeout: 15000 })
-    await sleep(3000)
-
-    // Desktop shows #id_n (username); mobile shows #id_s (account icon) or hides #id_a (sign-in).
-    // We're logged OUT if the sign-in link (#id_a) is visible.
-    const signInEl = await page.$('#id_a')
-    const signInVisible = signInEl ? await signInEl.isVisible() : false
-
-    if (signInVisible) {
-      // Save a screenshot to /tmp for debugging login failures
-      await page.screenshot({ path: '/tmp/bing-login-check.png' }).catch(() => {})
-      push('ERROR: Not logged in. Run the login flow first.')
-      await context.close()
-      await browser.close()
-      return { success: false, searches: 0, log }
-    }
-
-    // Try to read the display name (desktop only — fine to skip on mobile)
-    const nameEl = await page.$('#id_n')
-    const nameText = nameEl ? (await nameEl.textContent()).trim() : ''
-    push(nameText ? `Logged in as: ${nameText}` : 'Logged in (mobile — name not shown)')
-  } catch (e) {
-    push(`Warning: Could not check login status: ${e.message}`)
+  if (channel) {
+    // Desktop (Edge): use persistent profile — auth comes from the login flow,
+    // never expires independently of browser cookies.
+    context = await chromium.launchPersistentContext(PROFILE_DIR, {
+      headless: false,
+      channel,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--no-first-run',
+        '--disable-sync',
+        '--no-default-browser-check',
+      ],
+      viewport,
+      locale: 'en-AU',
+      timezoneId: 'Australia/Sydney',
+    })
+  } else {
+    // Mobile (Chromium): non-persistent context with injected cookies.
+    // Cookies are refreshed by openLoginBrowser() each time it runs.
+    browser = await chromium.launch({
+      headless: false,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--no-first-run',
+        '--disable-sync',
+        '--no-default-browser-check',
+      ],
+    })
+    context = await browser.newContext({
+      userAgent,
+      viewport,
+      locale: 'en-AU',
+      timezoneId: 'Australia/Sydney',
+    })
+    await injectSavedCookies(context)
   }
 
-  // Capture balance before we start so the API can record an accurate pointsBefore.
+  const page = context.pages()[0] || await context.newPage()
+
+  // Login check: read balance from rewards.bing.com (unambiguous; #id_a is unreliable on new Bing UI).
   const pointsBefore = await readPointsBalance(page)
-  if (pointsBefore != null) push(`Points before: ${pointsBefore.toLocaleString()}`)
+  if (pointsBefore == null) {
+    await page.screenshot({ path: '/tmp/bing-login-check.png' }).catch(() => {})
+    push('ERROR: Not logged in. Run the login flow first.')
+    await context.close()
+    if (browser) await browser.close()
+    return { success: false, searches: 0, log }
+  }
+  push(`Logged in. Points before: ${pointsBefore.toLocaleString()}`)
 
   const queries = getRandomQueries(count)
   let completed = 0
@@ -153,7 +154,7 @@ async function runSearches({ count, minD, maxD, userAgent, viewport, label, chan
   else push('Points balance: could not read (check rewards dashboard manually)')
 
   await context.close()
-  await browser.close()
+  if (browser) await browser.close()
   push(`Done. Completed ${completed}/${count} ${label} searches.`)
 
   return { success: true, searches: completed, pointsBefore, pointsAfter: balance, log }
@@ -591,6 +592,17 @@ export async function openLoginBrowser() {
         push('Still waiting for sign-in...')
       } catch (e) {
         push(`Poll error: ${e.message}`)
+      }
+    }
+
+    if (loggedIn) {
+      // Export cookies so mobile searches (Chromium non-persistent) can reuse the session.
+      try {
+        const cookies = await context.cookies()
+        fs.writeFileSync(COOKIES_FILE, JSON.stringify(cookies, null, 2))
+        push(`Saved ${cookies.length} cookies to ${COOKIES_FILE}`)
+      } catch (e) {
+        push(`Warning: could not save cookies: ${e.message}`)
       }
     }
 
