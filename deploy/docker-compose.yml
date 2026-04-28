@@ -92,6 +92,8 @@ services:
     environment:
       - EMULATOR_DEVICE=Samsung Galaxy S10
       - WEB_VNC=true
+      - EMULATOR_ADDITIONAL_ARGS=-memory 1024
+      - DEVICE_INTERVAL_WAITING=10
     volumes:
       - android-data:/root
 

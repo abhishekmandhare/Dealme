@@ -18,13 +18,16 @@ async function adb(...args) {
   return stdout.trim()
 }
 
-// Connect to the emulator; retries for up to 90s so it has time to boot
+// Connect to the emulator; retries for up to 3 min so it has time to boot.
+// Checks that the device is online (not just listed — it can appear as "offline" while booting).
 async function connectDevice(push) {
-  for (let attempt = 1; attempt <= 9; attempt++) {
+  for (let attempt = 1; attempt <= 18; attempt++) {
     try {
       await execFileAsync('adb', ['connect', DEVICE_ID], { timeout: 10000 })
-      const devices = await execFileAsync('adb', ['devices'])
-      if (devices.stdout.includes(DEVICE_ID)) {
+      const { stdout } = await execFileAsync('adb', ['devices'])
+      // "offline" means ADB sees the port but the emulator isn't ready yet
+      const lines = stdout.split('\n').filter(l => l.includes(DEVICE_ID))
+      if (lines.length > 0 && !lines[0].includes('offline')) {
         push(`Connected to Android device (attempt ${attempt})`)
         return true
       }
@@ -32,7 +35,7 @@ async function connectDevice(push) {
     push(`Waiting for Android device... (${attempt * 10}s)`)
     await sleep(10000)
   }
-  push('ERROR: Android device did not become available within 90s')
+  push('ERROR: Android device did not become available within 3 minutes')
   return false
 }
 
