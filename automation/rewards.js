@@ -153,6 +153,17 @@ async function runSearches({ count, minD, maxD, userAgent, viewport, label, chan
   if (balance != null) push(`Points balance: ${balance.toLocaleString()}`)
   else push('Points balance: could not read (check rewards dashboard manually)')
 
+  // Refresh ms-cookies.json from the persistent profile so mobile searches
+  // (Chromium, can't share Edge profile) keep working without manual login.
+  if (channel) {
+    try {
+      const cookies = await context.cookies()
+      fs.writeFileSync(COOKIES_FILE, JSON.stringify(cookies, null, 2))
+    } catch (e) {
+      push(`Warning: could not refresh ${COOKIES_FILE}: ${e.message}`)
+    }
+  }
+
   await context.close()
   if (browser) await browser.close()
   push(`Done. Completed ${completed}/${count} ${label} searches.`)

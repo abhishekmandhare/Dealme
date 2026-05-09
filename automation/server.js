@@ -11,6 +11,20 @@ app.use(express.json())
 let lastRun = null
 let running = false
 
+// Wall-clock cap on a task. If it doesn't resolve in time, we reject so the
+// outer try/catch fires and `finally` clears the `running` flag — otherwise
+// a hung Playwright call locks the service indefinitely (#stuck-running).
+// Any browser processes left behind get cleaned up on next container restart.
+function withTimeout(promise, ms, label) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
+const MIN = 60 * 1000
+
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', lastRun })
 })
@@ -24,7 +38,7 @@ app.post('/run/bing-searches', async (req, res) => {
 
   running = true
   try {
-    const result = await runBingSearches({ searchCount, minDelay, maxDelay })
+    const result = await withTimeout(runBingSearches({ searchCount, minDelay, maxDelay }), 20 * MIN, 'bing-searches')
     lastRun = {
       task: 'bing-searches',
       success: result.success,
@@ -57,7 +71,7 @@ app.post('/run/bing-searches-mobile', async (req, res) => {
 
   running = true
   try {
-    const result = await runBingMobileSearches({ searchCount, minDelay, maxDelay })
+    const result = await withTimeout(runBingMobileSearches({ searchCount, minDelay, maxDelay }), 15 * MIN, 'bing-searches-mobile')
     lastRun = {
       task: 'bing-searches-mobile',
       success: result.success,
@@ -90,7 +104,7 @@ app.post('/run/daily-activities', async (req, res) => {
 
   running = true
   try {
-    const result = await runDailyActivities({ maxActivities })
+    const result = await withTimeout(runDailyActivities({ maxActivities }), 15 * MIN, 'daily-activities')
     lastRun = {
       task: 'daily-activities',
       success: result.success,
@@ -123,7 +137,7 @@ app.post('/run/redeem', async (req, res) => {
 
   running = true
   try {
-    const result = await runRedemption({ brand, denomination, dryRun })
+    const result = await withTimeout(runRedemption({ brand, denomination, dryRun }), 5 * MIN, 'redeem')
     lastRun = {
       task: 'redeem',
       success: result.success,
@@ -159,7 +173,7 @@ app.post('/run/enter-competition', async (req, res) => {
 
   running = true
   try {
-    const result = await runCompetitionEntry({ url, email, firstName, lastName, postcode })
+    const result = await withTimeout(runCompetitionEntry({ url, email, firstName, lastName, postcode }), 5 * MIN, 'enter-competition')
     lastRun = {
       task: 'enter-competition',
       url,
@@ -187,7 +201,7 @@ app.post('/run/google-surveys', async (req, res) => {
   if (running) return res.status(409).json({ error: 'Already running' })
   running = true
   try {
-    const result = await runGoogleSurveys()
+    const result = await withTimeout(runGoogleSurveys(), 10 * MIN, 'google-surveys')
     lastRun = {
       task: 'google-surveys',
       success: result.success,
@@ -219,7 +233,7 @@ app.post('/run/login', async (req, res) => {
   }
   running = true
   try {
-    const result = await openLoginBrowser()
+    const result = await withTimeout(openLoginBrowser(), 12 * MIN, 'login')
     res.json({ success: result.success, message: result.message, log: result.log })
   } catch (e) {
     res.status(500).json({ success: false, error: e.message })
